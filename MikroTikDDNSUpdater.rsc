@@ -1,5 +1,12 @@
+
+#!rsc by RouterOS
 # MikroTikDDNSUpdater
 # Build: 1
+#
+# https://github.com/lolostt/MikrotikDDNSUpdater
+# Copyright (C) 2022 Sleeping Coconut https://sleepingcoconut.com
+#
+#
 # This script updates dynamic DNS service using current public IP.
 #
 # Usage:
