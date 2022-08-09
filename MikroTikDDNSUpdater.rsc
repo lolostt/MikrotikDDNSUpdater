@@ -1,4 +1,3 @@
-
 #!rsc by RouterOS
 # MikroTikDDNSUpdater
 # Build: 1
