@@ -6,7 +6,7 @@ This is a set of scripts. Each script updates specific dynamic DNS service using
 ## Getting Started
 ### Prerequisites
 #### Hardware
-- Mikrotik device running RouterOS 6. RouterOS 7 compatibility is not tested yet.
+- Mikrotik device running RouterOS 6.49.7. RouterOS 7 compatibility is not tested yet.
 
 ### Installing
 1. Download, clone or copy script on your local computer.
@@ -30,7 +30,7 @@ You can also run it from terminal:
     1. Service 1: DNS-O-Matic. Requires DDNSUserName and DDNSUserPassword.
     2. Service 2: No-IP. Requires DDNSUserName and DDNSUserPassword.
 - **PublicIPServiceMode** (integer) variable lets you select method of determining current public IP address: 
-    1. Method 1 uses OpenDNS service.
+    1. Method 1 uses DNS-O-Matic service.
     2. Method 2 uses Mikrotik Cloud service. Requires MikroTikCloudHostName.
 - **VerboseMode** variable (boolean) lets you activate verbose mode.
 
