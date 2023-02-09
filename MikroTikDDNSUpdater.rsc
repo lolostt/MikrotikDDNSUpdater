@@ -1,9 +1,9 @@
 #!rsc by RouterOS
 # MikroTikDDNSUpdater
-# Build: 1
+# Build: 2
 #
 # https://github.com/lolostt/MikrotikDDNSUpdater
-# Copyright (C) 2022 Sleeping Coconut https://sleepingcoconut.com
+# Copyright (C) 2023 Sleeping Coconut https://sleepingcoconut.com
 #
 #
 # This script updates dynamic DNS service using current public IP.
@@ -28,7 +28,7 @@
 :local DDNSUserPassword "password"; # Dynamic DNS service user password.
 
 # Public IP determination mode:
-#   "1" OpenDNS (default)
+#   "1" DNS-O-Matic (default)
 #   "2" Mikrotik Cloud Services
 :local PublicIPServiceMode "1";
 :local MikroTikCloudHostName "SERIALNUMBER.sn.mynetname.net"; # Optional. # Needed if using method 2
@@ -47,9 +47,8 @@
   "1"="https://updates.dnsomatic.com/nic/update\3F"; \
   "2"="https://dynupdate.no-ip.com/nic/update\3F" };
 
-# OpenDNS public IP determination service
-:local ODNSPublicIPURL "myip.opendns.com";
-:local ODNSPublicIPserver "208.67.222.222";
+# DNS-O-Matic public IP determination service
+:local DNSOMaticPublicIPURL "https://myip.dnsomatic.com/";
 
 # --------------------------------------------------------------------------------------------------
 # Runtime variables ( DO NOT EDIT )
@@ -88,7 +87,7 @@
     :local currentIP "0.0.0.0";
     :do {
         :if ( $mode = "1" ) do={
-            :set currentIP [resolve domain-name=$ODNSURL server=$ODNSServer];
+            :set currentIP ([/tool fetch mode=https url=$myIPURL as-value output=user]->"data");
             :return $currentIP;
         };
         :if ( $mode = "2" ) do={
@@ -155,8 +154,7 @@ $checkDefaults DomainName=$DomainName \
 # Stage 2a: get public IP address
 
 :set currentPublicIPAddress [$getPublicIP mode=$PublicIPServiceMode \
-                                          ODNSURL=$ODNSPublicIPURL \
-                                          ODNSServer=$ODNSPublicIPserver \
+                                          myIPURL=$DNSOMaticPublicIPURL \
                                           cloudName=$MikroTikCloudHostName;]
 
 # Stage 2b: check public IP address
