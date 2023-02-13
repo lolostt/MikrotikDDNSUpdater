@@ -30,9 +30,12 @@ You can also run it from terminal:
     1. Service 1: DNS-O-Matic. Requires DDNSUserName and DDNSUserPassword.
     2. Service 2: No-IP. Requires DDNSUserName and DDNSUserPassword.
 - **PublicIPServiceMode** (integer) variable lets you select method of determining current public IP address: 
-    1. Method 1 uses DNS-O-Matic service.
-    2. Method 2 uses Mikrotik Cloud service. Requires MikroTikCloudHostName.
+    1. Method 1 uses icanhazip.com service.
+    2. Method 2 uses Amazon Web Services service.
+    3. Method 3 uses DNS-O-Matic service.
+    9. Method 9 uses Mikrotik Cloud service. Requires MikroTikCloudHostName.
 - **VerboseMode** variable (boolean) lets you activate verbose mode.
+- **RequestWait** variable (integer) lets you define HTTP requests wait time (in seconds). Raise if network is slow.
 
 
 ### Script behaviour
