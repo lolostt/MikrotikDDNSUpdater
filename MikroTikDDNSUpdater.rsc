@@ -1,6 +1,6 @@
 #!rsc by RouterOS
 # MikroTikDDNSUpdater
-# Build: 3
+# Build: 4
 #
 # https://github.com/lolostt/MikrotikDDNSUpdater
 # Copyright (C) 2023 Sleeping Coconut https://sleepingcoconut.com
@@ -35,6 +35,7 @@
 
 # Other options:
 :local VerboseMode "false";
+:local RequestWait 5; # [seconds]
 
 # --------------------------------------------------------------------------------------------------
 # Hardcoded variables ( DO NOT EDIT unless you want to add a new DDNS service )
@@ -57,6 +58,7 @@
 :local currentDomainIPAddress "0.0.0.0";
 :local APIURLWithArgs;
 :local APIResponse;
+:local RequestWaitConverted [:totime $RequestWait];
 
 # --------------------------------------------------------------------------------------------------
 # Functions
@@ -88,12 +90,12 @@
     :do {
         :if ( $mode = "1" ) do={
             :set currentIP ([/tool fetch mode=https url=$myIPURL as-value output=user]->"data");
-            :delay 10s;
+            :delay $requestWait;
             :return $currentIP;
         };
         :if ( $mode = "2" ) do={
             /ip cloud force-update;
-            :delay 10s;
+            :delay $requestWait;
             :set currentIP [resolve domain-name=$cloudName];
             :return $currentIP;
         };
@@ -122,7 +124,7 @@
           password="$userPassword" \
           url="$url" \
           keep-result=no;
-        :delay 5s;
+        :delay $requestWait;
         :return 0;
     } on-error={
         :return 1;
@@ -156,7 +158,8 @@ $checkDefaults DomainName=$DomainName \
 
 :set currentPublicIPAddress [$getPublicIP mode=$PublicIPServiceMode \
                                           myIPURL=$DNSOMaticPublicIPURL \
-                                          cloudName=$MikroTikCloudHostName;]
+                                          cloudName=$MikroTikCloudHostName \
+                                          requestWait=$RequestWaitConverted;]
 
 # Stage 2b: check public IP address
 
@@ -209,6 +212,7 @@ if ( $currentPublicIPAddress = $currentDomainIPAddress ) do={
         $APICall url=$APIURLWithArgs \
           userName=$DDNSUserName \
           userPassword=$DDNSUserPassword \
+          requestWait=$RequestWaitConverted \
           VerboseMode=$VerboseMode;
     ]
 
