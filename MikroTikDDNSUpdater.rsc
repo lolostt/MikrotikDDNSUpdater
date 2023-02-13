@@ -1,6 +1,6 @@
 #!rsc by RouterOS
 # MikroTikDDNSUpdater
-# Build: 2
+# Build: 3
 #
 # https://github.com/lolostt/MikrotikDDNSUpdater
 # Copyright (C) 2023 Sleeping Coconut https://sleepingcoconut.com
@@ -88,6 +88,7 @@
     :do {
         :if ( $mode = "1" ) do={
             :set currentIP ([/tool fetch mode=https url=$myIPURL as-value output=user]->"data");
+            :delay 10s;
             :return $currentIP;
         };
         :if ( $mode = "2" ) do={
