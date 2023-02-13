@@ -1,6 +1,6 @@
 #!rsc by RouterOS
 # MikroTikDDNSUpdater
-# Build: 4
+# Build: 5
 #
 # https://github.com/lolostt/MikrotikDDNSUpdater
 # Copyright (C) 2023 Sleeping Coconut https://sleepingcoconut.com
@@ -34,7 +34,7 @@
 :local MikroTikCloudHostName "SERIALNUMBER.sn.mynetname.net"; # Optional. # Needed if using method 2
 
 # Other options:
-:local VerboseMode "false";
+:local VerboseMode false;
 :local RequestWait 5; # [seconds]
 
 # --------------------------------------------------------------------------------------------------
@@ -134,7 +134,7 @@
 # --------------------------------------------------------------------------------------------------
 # Script
 
-if ( $VerboseMode = "true" ) do={ 
+if ( $VerboseMode = true ) do={ 
     :local message1 ("MikroTikDDNSUpdater: selected " \
       . \
       ($DDNSServiceNames->"$DDNSService") . " service");
@@ -172,7 +172,7 @@ if ( $currentPublicIPAddress = "0.0.0.0" ||  \
         $endScript message="MikroTikDDNSUpdater: public IP address determination failed";
     };
 } else {
-    :if ( $VerboseMode = "true" ) do={
+    :if ( $VerboseMode = true ) do={
         :log info "MikroTikDDNSUpdater: public IP address is $currentPublicIPAddress";
     };
 };
@@ -188,7 +188,7 @@ if ( $currentDomainIPAddress = "0.0.0.0" || \
      $currentDomainIPAddress = nil ) do={
     $endScript message="MikroTikDDNSUpdater: domain IP address determination failed";
 } else {
-    :if ( $VerboseMode = "true" ) do={
+    :if ( $VerboseMode = true ) do={
         :log info "MikroTikDDNSUpdater: domain IP address is $currentDomainIPAddress";
     };
 };
@@ -204,7 +204,7 @@ if ( $currentPublicIPAddress = $currentDomainIPAddress ) do={
       . \
       "hostname=$DomainName&myip=$currentPublicIPAddress");
 
-    :if ( $VerboseMode = "true" ) do={
+    :if ( $VerboseMode = true ) do={
         :log info "MikroTikDDNSUpdater: calling API with url: $APIURLWithArgs";
     };
 
@@ -227,6 +227,6 @@ if ( $currentPublicIPAddress = $currentDomainIPAddress ) do={
 # ----------
 # Final stage:
 
-:if ( $VerboseMode = "true" ) do={ :log info "MikroTikDDNSUpdater: script reached end"; };
+:if ( $VerboseMode = true ) do={ :log info "MikroTikDDNSUpdater: script reached end"; };
 
 # --------------------------------------------------------------------------------------------------
