@@ -1,6 +1,6 @@
 #!rsc by RouterOS
 # MikroTikDDNSUpdater
-# Build: 5
+# Build: 6
 #
 # https://github.com/lolostt/MikrotikDDNSUpdater
 # Copyright (C) 2023 Sleeping Coconut https://sleepingcoconut.com
@@ -28,17 +28,19 @@
 :local DDNSUserPassword "password"; # Dynamic DNS service user password.
 
 # Public IP determination mode:
-#   "1" DNS-O-Matic (default)
-#   "2" Mikrotik Cloud Services
+#   "1" icanhazip (default)
+#   "2" AWS
+#   "3" DNS-O-Matic
+#   "9" Mikrotik Cloud Services
 :local PublicIPServiceMode "1";
-:local MikroTikCloudHostName "SERIALNUMBER.sn.mynetname.net"; # Optional. # Needed if using method 2
+:local MikroTikCloudHostName "SERIALNUMBER.sn.mynetname.net"; # Optional. # Needed if using method 9
 
 # Other options:
 :local VerboseMode false;
 :local RequestWait 5; # [seconds]
 
 # --------------------------------------------------------------------------------------------------
-# Hardcoded variables ( DO NOT EDIT unless you want to add a new DDNS service )
+# Hardcoded variables ( DO NOT EDIT unless you want to edit a service )
 
 :local DDNSServiceNames { \
   "1"="DNS-O-Matic"; \
@@ -48,8 +50,11 @@
   "1"="https://updates.dnsomatic.com/nic/update\3F"; \
   "2"="https://dynupdate.no-ip.com/nic/update\3F" };
 
-# DNS-O-Matic public IP determination service
-:local DNSOMaticPublicIPURL "https://myip.dnsomatic.com/";
+# Public IP determination services
+:local PublicIPServiceURLs { \
+  "1"="https://icanhazip.com/"; \
+  "2"="https://checkip.amazonaws.com/"; \
+  "3"="https://myip.dnsomatic.com/" };
 
 # --------------------------------------------------------------------------------------------------
 # Runtime variables ( DO NOT EDIT )
@@ -59,6 +64,7 @@
 :local APIURLWithArgs;
 :local APIResponse;
 :local RequestWaitConverted [:totime $RequestWait];
+:local PublicIPServiceURLSelected;
 
 # --------------------------------------------------------------------------------------------------
 # Functions
@@ -78,7 +84,7 @@
         :log error "MikroTikDDNSUpdater: DNS service credentials not configured";
         :error "MikroTikDDNSUpdater: DNS service credentials not configured";
     };
-    :if ( $PublicIPServiceMode = "2" && \
+    :if ( $PublicIPServiceMode = "9" && \
           $MikroTikCloudHostName = "SERIALNUMBER.sn.mynetname.net" ) do={
         :log error "MikroTikDDNSUpdater: MikroTikCloudHostName variable not configured";
         :error "MikroTikDDNSUpdater: MikroTikCloudHostName variable not configured";
@@ -88,18 +94,25 @@
 :global getPublicIP do={
     :local currentIP "0.0.0.0";
     :do {
-        :if ( $mode = "1" ) do={
-            :set currentIP ([/tool fetch mode=https url=$myIPURL as-value output=user]->"data");
+        :if ( $mode = "1" || $mode = "2" || $mode = "3" ) do={
+            :set currentIP ([/tool fetch mode=https url=$publicIPServiceURL as-value output=user]->"data");
             :delay $requestWait;
-            :return $currentIP;
+            :local lastCharacterIndex [:put ([:len $currentIP] - 1)];
+            :local lastCharacter [:pick $currentIP $lastCharacterIndex];
+            :if ( $lastCharacter = "\n" ) do={
+                :local cleanCurrentIP [:pick $currentIP 0 $lastCharacterIndex];
+                :return $cleanCurrentIP;
+            } else {
+                :return $currentIP;    
+            };
         };
-        :if ( $mode = "2" ) do={
+        :if ( $mode = "9" ) do={
             /ip cloud force-update;
             :delay $requestWait;
             :set currentIP [resolve domain-name=$cloudName];
             :return $currentIP;
         };
-        :if ( $mode != "1" && $mode != "2") do={
+        :if ( $mode != 1 && $mode != 2 && $mode != 3 && $mode != 9) do={
             :return "invalid mode";
         };
     } on-error={
@@ -134,7 +147,9 @@
 # --------------------------------------------------------------------------------------------------
 # Script
 
-if ( $VerboseMode = true ) do={ 
+:if ( $VerboseMode = true ) do={ :log info "MikroTikDDNSUpdater: script starting"; };
+
+:if ( $VerboseMode = true ) do={ 
     :local message1 ("MikroTikDDNSUpdater: selected " \
       . \
       ($DDNSServiceNames->"$DDNSService") . " service");
@@ -156,17 +171,18 @@ $checkDefaults DomainName=$DomainName \
 # ----------
 # Stage 2a: get public IP address
 
+:set PublicIPServiceURLSelected ($PublicIPServiceURLs->"$PublicIPServiceMode");
 :set currentPublicIPAddress [$getPublicIP mode=$PublicIPServiceMode \
-                                          myIPURL=$DNSOMaticPublicIPURL \
+                                          publicIPServiceURL=$PublicIPServiceURLSelected \
                                           cloudName=$MikroTikCloudHostName \
                                           requestWait=$RequestWaitConverted;]
 
 # Stage 2b: check public IP address
 
-if ( $currentPublicIPAddress = "0.0.0.0" ||  \
+:if ( $currentPublicIPAddress = "0.0.0.0" ||  \
      $currentPublicIPAddress = nil ||  \
      $currentPublicIPAddress = "invalid mode" ) do={
-    if ( $currentPublicIPAddress = "invalid mode" ) do={
+    :if ( $currentPublicIPAddress = "invalid mode" ) do={
         $endScript message="MikroTikDDNSUpdater: invalid PublicIPServiceMode";
     } else {
         $endScript message="MikroTikDDNSUpdater: public IP address determination failed";
@@ -184,7 +200,7 @@ if ( $currentPublicIPAddress = "0.0.0.0" ||  \
 
 # Stage 3b: check domain IP address
 
-if ( $currentDomainIPAddress = "0.0.0.0" || \
+:if ( $currentDomainIPAddress = "0.0.0.0" || \
      $currentDomainIPAddress = nil ) do={
     $endScript message="MikroTikDDNSUpdater: domain IP address determination failed";
 } else {
@@ -196,7 +212,7 @@ if ( $currentDomainIPAddress = "0.0.0.0" || \
 # ----------
 # Stage 4a: compare IP addresses
 
-if ( $currentPublicIPAddress = $currentDomainIPAddress ) do={
+:if ( $currentPublicIPAddress = $currentDomainIPAddress ) do={
     :log info "MikroTikDDNSUpdater: update not needed for $DomainName";
 } else {
 # Stage 4b: call API
@@ -216,7 +232,7 @@ if ( $currentPublicIPAddress = $currentDomainIPAddress ) do={
           VerboseMode=$VerboseMode;
     ]
 
-    if ( $APIResponse = 0 ) do={
+    :if ( $APIResponse = 0 ) do={
         :log info "MikroTikDDNSUpdater: $DomainName updated from \
           $currentDomainIPAddress to $currentPublicIPAddress";
     } else {
@@ -227,6 +243,6 @@ if ( $currentPublicIPAddress = $currentDomainIPAddress ) do={
 # ----------
 # Final stage:
 
-:if ( $VerboseMode = true ) do={ :log info "MikroTikDDNSUpdater: script reached end"; };
+:if ( $VerboseMode = true ) do={ :log info "MikroTikDDNSUpdater: script ended"; };
 
 # --------------------------------------------------------------------------------------------------
