@@ -1,6 +1,6 @@
 #!rsc by RouterOS
 # MikroTikDDNSUpdater
-# Build: 6
+# Build: 7
 #
 # https://github.com/lolostt/MikrotikDDNSUpdater
 # Copyright (C) 2023 Sleeping Coconut https://sleepingcoconut.com
@@ -33,7 +33,7 @@
 #   "3" DNS-O-Matic
 #   "9" Mikrotik Cloud Services
 :local PublicIPServiceMode "1";
-:local MikroTikCloudHostName "SERIALNUMBER.sn.mynetname.net"; # Optional. # Needed if using method 9
+:local MikroTikCloudHostName "SERIALNUMBER.sn.mynetname.net"; # Optional. # Needed if using mode 9
 
 # Other options:
 :local VerboseMode false;
@@ -95,7 +95,9 @@
     :local currentIP "0.0.0.0";
     :do {
         :if ( $mode = "1" || $mode = "2" || $mode = "3" ) do={
-            :set currentIP ([/tool fetch mode=https url=$publicIPServiceURL as-value output=user]->"data");
+            :set currentIP ([/tool fetch mode=https \
+                                         url=$publicIPServiceURL \
+                                         as-value output=user]->"data");
             :delay $requestWait;
             :local lastCharacterIndex [:put ([:len $currentIP] - 1)];
             :local lastCharacter [:pick $currentIP $lastCharacterIndex];
@@ -165,8 +167,7 @@ $checkDefaults DomainName=$DomainName \
                DDNSUserName=$DDNSUserName \
                DDNSUserPassword=$DDNSUserPassword \
                PublicIPServiceMode=$PublicIPServiceMode \
-               MikroTikCloudHostName=$MikroTikCloudHostName \
-               VerboseMode=$VerboseMode;
+               MikroTikCloudHostName=$MikroTikCloudHostName;
 
 # ----------
 # Stage 2a: get public IP address
@@ -228,8 +229,7 @@ $checkDefaults DomainName=$DomainName \
         $APICall url=$APIURLWithArgs \
           userName=$DDNSUserName \
           userPassword=$DDNSUserPassword \
-          requestWait=$RequestWaitConverted \
-          VerboseMode=$VerboseMode;
+          requestWait=$RequestWaitConverted;
     ]
 
     :if ( $APIResponse = 0 ) do={
