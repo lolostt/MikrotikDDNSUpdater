@@ -6,7 +6,7 @@ This is a set of scripts. Each script updates specific dynamic DNS service using
 ## Getting Started
 ### Prerequisites
 #### Hardware
-- Mikrotik device running RouterOS 6.49.7. RouterOS 7 compatibility is not tested yet.
+- Mikrotik device running RouterOS 6.49.7 and up or 7.14.3 and up. Other RouterOS versions may be compatible but have not been tested.
 
 ### Installing
 1. Download, clone or copy script on your local computer.
@@ -26,16 +26,17 @@ You can also run it from terminal:
 ```
 
 ### Available options
-- **DDNSService** (integer) variable lets you select dynamic DNS service. Note that different services requires different types of credentials.
+- **DDNSService** (integer) variable allows you to select a dynamic DNS service. Note that different services require different types of credentials.
     1. Service 1: DNS-O-Matic. Requires DDNSUserName and DDNSUserPassword.
     2. Service 2: No-IP. Requires DDNSUserName and DDNSUserPassword.
-- **PublicIPServiceMode** (integer) variable lets you select method of determining current public IP address: 
+- **PublicIPServiceMode** (integer) variable allows you to select the method for determining the current public IP address: 
     1. Method 1 uses icanhazip.com service.
     2. Method 2 uses Amazon Web Services service.
     3. Method 3 uses DNS-O-Matic service.
     9. Method 9 uses Mikrotik Cloud service. Requires MikroTikCloudHostName.
-- **VerboseMode** variable (boolean) lets you activate verbose mode.
-- **RequestWait** variable (integer) lets you define HTTP requests wait time (in seconds). Raise if network is slow.
+- **VerboseMode** variable (boolean) allows you to enable verbose mode.
+- **RequestWait** variable (integer) allows you to define the wait time for HTTP requests (in seconds). Increase this value if the network is slow.
+- **DisableDomainIPAddressCheck** variable (boolean) allows you to disable the determination of the domain's current IP address. This is useful when the system is behind a Cloudflare proxy or a similar service.
 
 
 ### Script behaviour
