@@ -18,7 +18,8 @@ This is a set of scripts. Each script updates specific DNS service using current
 ## Usage
 You can run the script manually using Winbox or WebFig under System > Scripts section. Don't forget proper permissions.
 
-![image](https://user-images.githubusercontent.com/38651148/183600649-9958dad6-2fa5-4dff-9530-85a5a96cb44d.png)
+<img width="761" height="824" alt="1" src="https://github.com/user-attachments/assets/d7a3b529-f896-4d63-b285-aecd69762733" />
+
 
 You can also run it from terminal:
 ```
@@ -43,7 +44,7 @@ Script has 4 stages:
 ### Automation
 You can automate execution in order to set and forget the script. You can do that by using RouterOS scheduler under System > Scheduler section. Don't forget proper permissions.
 
-![image](https://user-images.githubusercontent.com/38651148/183600386-e1aa462d-2886-4f6c-be03-1efa5480a4e0.png)
+<img width="525" height="720" alt="2" src="https://github.com/user-attachments/assets/5475b0d5-7819-48c4-8dfc-9250f4d03735" />
 
 ## Authors
 * **lolost** - [sleepingcoconut.com](https://sleepingcoconut.com/)
