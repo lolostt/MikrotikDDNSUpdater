@@ -7,6 +7,7 @@
 #
 #
 # This script updates DNS service using current public IP.
+# Requires RouterOS 7.13 or newer.
 #
 # Usage:
 #    1. Fill "Variables" section below.
