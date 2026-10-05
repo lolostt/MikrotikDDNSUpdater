@@ -1,6 +1,6 @@
 #!rsc by RouterOS
 # MikroTikDDNSUpdater-Cloudflare
-# Build: 10
+# Build: 11
 #
 # https://github.com/lolostt/MikrotikDDNSUpdater
 # Copyright (C) 2026 Sleeping Coconut https://sleepingcoconut.com
@@ -99,6 +99,14 @@
     :if (([:len $configuredHostname] = 0) || ($configuredHostname = "xxx")) do={
         :log error "MikroTikDDNSUpdater: edit the hostname in records before running the script"
         :error "MikroTikDDNSUpdater: hostname is not configured"
+    }
+
+    # Check that the hostname is lowercase, as Cloudflare stores record names in lowercase.
+    :for charIndex from=0 to=([:len $configuredHostname] - 1) do={
+        :if ([:typeof [:find "ABCDEFGHIJKLMNOPQRSTUVWXYZ" [:pick $configuredHostname $charIndex]]] = "num") do={
+            :log error ("MikroTikDDNSUpdater: hostname must be lowercase: " . $configuredHostname)
+            :error "MikroTikDDNSUpdater: hostname must be lowercase"
+        }
     }
 
     # Check that the DNS record ID has been configured.
