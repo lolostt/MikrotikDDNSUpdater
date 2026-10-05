@@ -11,8 +11,8 @@ This is a set of scripts. Each script updates specific DNS service using current
 ### Installing
 1. Download, clone or copy script on your local computer.
 2. Fill "Variables" section.
-4. Place script in Mikrotik device using Winbox, WebFig or terminal.
-5. Give "read", "write" and "test" permissions.
+3. Place script in Mikrotik device using Winbox, WebFig or terminal.
+4. Give "read", "write" and "test" permissions.
 5. You can automate execution using RouterOS scheduler. See below.
 
 ## Usage
@@ -27,7 +27,7 @@ You can also run it from terminal:
 ```
 
 ### Available options
-- **PublicIPServiceMode** (integer) variable allows you to select the method for determining the current public IP address: 
+- **publicIpService** (integer) variable allows you to select the method for determining the current public IP address: 
     1. Method 1 uses icanhazip.com service.
     2. Method 2 uses ipify.org service.
     3. Method 3 uses Amazon service.
