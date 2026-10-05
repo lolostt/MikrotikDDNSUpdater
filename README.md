@@ -6,7 +6,7 @@ This is a set of scripts. Each script updates specific DNS service using current
 ## Getting Started
 ### Prerequisites
 #### Hardware
-- Mikrotik device running RouterOS 7.1 or newer. RouterOS 6 is not supported.
+- Mikrotik device running RouterOS 7.13 or newer. Older versions (including RouterOS 6) are not supported.
 
 ### Installing
 1. Download, clone or copy script on your local computer.
