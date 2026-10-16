@@ -60,8 +60,17 @@
     ipinfo="https://ipinfo.io/ip"
 }
 
-# Addresses that can never be the public IP (private, CGNAT, loopback, link-local).
-:local nonPublicRanges {0.0.0.0/8; 10.0.0.0/8; 100.64.0.0/10; 127.0.0.0/8; 169.254.0.0/16; 172.16.0.0/12; 192.168.0.0/16}
+# Addresses that can never be the public IP (private, CGNAT, loopback, link-local),
+# as {network; netmask} pairs.
+:local nonPublicRanges {
+    {0.0.0.0; 255.0.0.0};
+    {10.0.0.0; 255.0.0.0};
+    {100.64.0.0; 255.192.0.0};
+    {127.0.0.0; 255.0.0.0};
+    {169.254.0.0; 255.255.0.0};
+    {172.16.0.0; 255.240.0.0};
+    {192.168.0.0; 255.255.0.0}
+}
 
 # Cloudflare API.
 :local cloudflareApiUrl "https://api.cloudflare.com/client/v4/zones/"
@@ -84,12 +93,12 @@
 # Allowed characters for format checks.
 :local hostnameChars "abcdefghijklmnopqrstuvwxyz0123456789.-"
 :local hexChars "0123456789abcdef"
+:local digitChars "0123456789"
 
 # ============================================================================
 # Runtime variables
 # ============================================================================
 
-:local jobName [:jobname]
 :local recordCount 0
 :local usesCloudflare false
 :local usesNoip false
@@ -97,34 +106,33 @@
 :local noipAuthHeader ""
 :local noipNameServerIp ""
 :local publicIp ""
-:local servicesToTry ({})
-# Per-record state, indexed like $records.
-:local recordIds ({})
-:local dnsIps ({})
-:local needsUpdate ({})
-:local recordFailed ({})
+# Per-record state, indexed like $records. [:toarray ""] is the documented empty array.
+:local recordIds [:toarray ""]
+:local dnsIps [:toarray ""]
+:local needsUpdate [:toarray ""]
+:local recordFailed [:toarray ""]
 :local failedCount 0
 :local updatedCount 0
 
 # Kept between runs (until reboot) so No-IP is not hammered after an error answer.
 #   MikrotikDDNSUpdaterNoipHold:    No-IP answer that stopped updates ("" = none).
-#   MikrotikDDNSUpdaterNoipRetryAt: uptime after which a "911" hold is released.
+#   MikrotikDDNSUpdaterNoipRetryAt: uptime, in nanoseconds, after which a "911" hold ends.
 :global MikrotikDDNSUpdaterNoipHold
 :global MikrotikDDNSUpdaterNoipRetryAt
+:if ([:typeof $MikrotikDDNSUpdaterNoipHold] != "str") do={
+    :global MikrotikDDNSUpdaterNoipHold
+    :set MikrotikDDNSUpdaterNoipHold ""
+}
+:if ([:typeof $MikrotikDDNSUpdaterNoipRetryAt] != "num") do={
+    :global MikrotikDDNSUpdaterNoipRetryAt
+    :set MikrotikDDNSUpdaterNoipRetryAt 0
+}
 
 # ============================================================================
 # Validate user configuration
 # ============================================================================
 
 :log info ($logPrefix . "INFO - starting")
-
-# Refuse to run twice at the same time (e.g. a slow run overlapping the scheduler).
-:if ([:len $jobName] > 0) do={
-    :if ([:len [/system script job find where script=$jobName]] > 1) do={
-        :log error ($logPrefix . "ERROR - another instance is already running")
-        :error ($logPrefix . "another instance is already running")
-    }
-}
 
 :if ([:typeof $dryRun] != "bool") do={
     :log error ($logPrefix . "ERROR - dryRun must be true or false")
@@ -231,8 +239,9 @@
         :log error ($logPrefix . "ERROR - Cloudflare API token contains spaces or commas")
         :error ($logPrefix . "invalid Cloudflare API token")
     }
-    :set cloudflareHeaders ("Authorization: Bearer " . $cloudflareApiToken . \
-        ",Content-Type: application/json")
+    # Documented http-header-field format: "name:value,name:value".
+    :set cloudflareHeaders ("Authorization:Bearer " . $cloudflareApiToken . \
+        ",Content-Type:application/json")
 }
 
 :if ($usesNoip) do={
@@ -262,15 +271,10 @@
 # Get the router's public IP address
 # ============================================================================
 
-:if ($publicIpService = "auto") do={
-    :set servicesToTry $publicIpServiceOrder
-} else={
-    :set servicesToTry [:toarray $publicIpService]
-}
-
-:foreach serviceName in=$servicesToTry do={
-    # Skip the remaining services once one has answered.
-    :if ([:typeof $publicIp] != "ip") do={
+:foreach serviceName in=$publicIpServiceOrder do={
+    # Use only the selected service, and skip the rest once one has answered.
+    :if ((($publicIpService = "auto") || ($publicIpService = $serviceName)) && \
+        ([:typeof $publicIp] != "ip")) do={
         :local answer ""
         :local lookupOk true
 
@@ -298,12 +302,49 @@
                 :set answer [:pick $answer 0 $lineEnd]
             }
 
-            # The round trip rejects partial values that :toip would expand (e.g. "10.1").
-            :local candidateIp [:toip $answer]
-            :if (([:typeof $candidateIp] = "ip") && ([:tostr $candidateIp] = $answer)) do={
+            # Accept only four dot-separated numbers from 0 to 255, so that partial values
+            # such as "10.1" (which :toip would expand) are rejected.
+            :local formatOk (([:len $answer] >= 7) && ([:len $answer] <= 15))
+            :if ($formatOk) do={
+                :local octetCount 0
+                :local octetText ""
+                # One extra step past the end closes the last octet.
+                :for charIndex from=0 to=[:len $answer] do={
+                    :local currentChar "."
+                    :if ($charIndex < [:len $answer]) do={
+                        :set currentChar [:pick $answer $charIndex]
+                    }
+                    :if ($currentChar = ".") do={
+                        :if (([:len $octetText] = 0) || ([:len $octetText] > 3)) do={
+                            :set formatOk false
+                        } else={
+                            :if ([:tonum $octetText] > 255) do={
+                                :set formatOk false
+                            }
+                        }
+                        :set octetCount ($octetCount + 1)
+                        :set octetText ""
+                    } else={
+                        :if ([:typeof [:find $digitChars $currentChar]] = "num") do={
+                            :set octetText ($octetText . $currentChar)
+                        } else={
+                            :set formatOk false
+                        }
+                    }
+                }
+                :if ($octetCount != 4) do={
+                    :set formatOk false
+                }
+            }
+
+            :local candidateIp ""
+            :if ($formatOk) do={
+                :set candidateIp [:toip $answer]
+            }
+            :if ([:typeof $candidateIp] = "ip") do={
                 :local isPublic true
                 :foreach range in=$nonPublicRanges do={
-                    :if ($candidateIp in $range) do={
+                    :if (($candidateIp & ($range->1)) = ($range->0)) do={
                         :set isPublic false
                     }
                 }
@@ -419,7 +460,7 @@
 
 # Release a No-IP "911" hold once its waiting time is over.
 :if (($MikrotikDDNSUpdaterNoipHold = "911") && \
-    ([/system resource get uptime] >= $MikrotikDDNSUpdaterNoipRetryAt)) do={
+    ([:tonsec value=[/system resource get uptime]] >= $MikrotikDDNSUpdaterNoipRetryAt)) do={
     # Globals must be bound again inside each nested block that changes them.
     :global MikrotikDDNSUpdaterNoipHold
     :set MikrotikDDNSUpdaterNoipHold ""
@@ -443,12 +484,12 @@
                 # No-IP blocks clients that keep sending requests after an error answer.
                 :set failedCount ($failedCount + 1)
                 :if ($MikrotikDDNSUpdaterNoipHold = "911") do={
-                    :log error ($logPrefix . "ERROR - No-IP server error, " . $hostname . \
-                        " not updated until uptime " . $MikrotikDDNSUpdaterNoipRetryAt)
+                    :log error ($logPrefix . "ERROR - No-IP server error (911), " . $hostname . \
+                        " not updated, waiting before retrying")
                 } else={
                     :log error ($logPrefix . "ERROR - No-IP answered " . $MikrotikDDNSUpdaterNoipHold . \
                         ", updates stopped. Fix it, then run: /system script environment remove" . \
-                        " MikrotikDDNSUpdaterNoipHold")
+                        " [find name=\"MikrotikDDNSUpdaterNoipHold\"]")
                 }
             } else={
                 :onerror updateError in={
@@ -467,7 +508,7 @@
                     } else={
                         :local response [/tool fetch \
                             url=($noipUpdateUrl . "?hostname=" . $hostname . "&myip=" . $publicIp) \
-                            http-header-field=("Authorization: " . $noipAuthHeader) \
+                            http-header-field=("Authorization:" . $noipAuthHeader) \
                             check-certificate=$checkCertificate output=user as-value]
                         :local answer [:tostr ($response->"data")]
                         # The answer is a code, optionally followed by the IP ("good 1.2.3.4").
@@ -516,7 +557,9 @@
             :global MikrotikDDNSUpdaterNoipHold
             :global MikrotikDDNSUpdaterNoipRetryAt
             :set MikrotikDDNSUpdaterNoipHold $noipHoldCode
-            :set MikrotikDDNSUpdaterNoipRetryAt ([/system resource get uptime] + $noipRetryDelay)
+            # Plain numbers (nanoseconds) avoid relying on time arithmetic.
+            :set MikrotikDDNSUpdaterNoipRetryAt ([:tonsec value=[/system resource get uptime]] + \
+                [:tonsec value=$noipRetryDelay])
             :log warning ($logPrefix . "WARNING - No-IP updates stopped after answer " . $noipHoldCode)
         }
     }
