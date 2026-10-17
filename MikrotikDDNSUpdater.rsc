@@ -10,7 +10,8 @@
 #
 # Usage:
 #    1. Fill the "User configuration" block below.
-#    2. Add the script under System > Scripts with "read", "write" and "test" policies.
+#    2. Add the script under System > Scripts with "read" and "test" policies
+#       (the only ones it needs). The scheduler entry needs the same policies.
 #    3. Run it once with dryRun set to true and check the log.
 #    4. Set dryRun to false and schedule it under System > Scheduler.
 
@@ -37,11 +38,11 @@
 :local noipUsername "USER@DOMAIN.COM"
 :local noipPassword "PASSWORD"
 
-# DNS records to keep updated. Hostnames must be lowercase.
-#   Cloudflare: {provider="cloudflare"; hostname="home.example.com"; zoneId="<zone ID>"}
+# DNS records to keep updated. Field names and hostnames must be lowercase.
+#   Cloudflare: {provider="cloudflare"; hostname="home.example.com"; zoneid="<zone ID>"}
 #   No-IP:      {provider="noip"; hostname="home.ddns.net"}
 :local records {
-    {provider="cloudflare"; hostname="SUBDOMAIN.DOMAIN.COM"; zoneId="CLOUDFLARE_ZONE_ID"};
+    {provider="cloudflare"; hostname="SUBDOMAIN.DOMAIN.COM"; zoneid="CLOUDFLARE_ZONE_ID"};
     {provider="noip"; hostname="SUBDOMAIN.DOMAIN.COM"}
 }
 
@@ -60,8 +61,8 @@
     ipinfo="https://ipinfo.io/ip"
 }
 
-# Addresses that can never be the public IP (private, CGNAT, loopback, link-local),
-# as {network; netmask} pairs.
+# Addresses that can never be the public IP (private, CGNAT, loopback, link-local,
+# multicast, reserved and broadcast), as {network; netmask} pairs.
 :local nonPublicRanges {
     {0.0.0.0; 255.0.0.0};
     {10.0.0.0; 255.0.0.0};
@@ -69,7 +70,9 @@
     {127.0.0.0; 255.0.0.0};
     {169.254.0.0; 255.255.0.0};
     {172.16.0.0; 255.240.0.0};
-    {192.168.0.0; 255.255.0.0}
+    {192.168.0.0; 255.255.0.0};
+    {224.0.0.0; 240.0.0.0};
+    {240.0.0.0; 240.0.0.0}
 }
 
 # Cloudflare API.
@@ -78,10 +81,8 @@
 # No-IP update API and authoritative name server (avoids stale cached answers).
 :local noipUpdateUrl "https://dynupdate.no-ip.com/nic/update"
 :local noipNameServer "nf1.no-ip.com"
-# No-IP answers that require stopping updates until the user fixes the problem.
-:local noipStopCodes {"nohost"; "badauth"; "badagent"; "!donator"; "abuse"}
-# No-IP server error ("911"): wait at least this long before trying again.
-:local noipRetryDelay 00:30:00
+# No-IP answers that must be fixed by the user; No-IP may block clients that keep retrying.
+:local noipFatalCodes {"nohost"; "badauth"; "badagent"; "!donator"; "abuse"}
 
 # Placeholders used to detect unedited configuration.
 :local placeholderHostname "SUBDOMAIN.DOMAIN.COM"
@@ -113,20 +114,6 @@
 :local recordFailed [:toarray ""]
 :local failedCount 0
 :local updatedCount 0
-
-# Kept between runs (until reboot) so No-IP is not hammered after an error answer.
-#   MikrotikDDNSUpdaterNoipHold:    No-IP answer that stopped updates ("" = none).
-#   MikrotikDDNSUpdaterNoipRetryAt: uptime, in nanoseconds, after which a "911" hold ends.
-:global MikrotikDDNSUpdaterNoipHold
-:global MikrotikDDNSUpdaterNoipRetryAt
-:if ([:typeof $MikrotikDDNSUpdaterNoipHold] != "str") do={
-    :global MikrotikDDNSUpdaterNoipHold
-    :set MikrotikDDNSUpdaterNoipHold ""
-}
-:if ([:typeof $MikrotikDDNSUpdaterNoipRetryAt] != "num") do={
-    :global MikrotikDDNSUpdaterNoipRetryAt
-    :set MikrotikDDNSUpdaterNoipRetryAt 0
-}
 
 # ============================================================================
 # Validate user configuration
@@ -166,6 +153,17 @@
         :error ($logPrefix . "invalid record")
     }
 
+    # Only known fields. RouterOS reads an unquoted key with capitals (e.g. Hostname=) as a
+    # comparison, which shows up here as a numbered entry instead of a named one.
+    :foreach fieldName,fieldValue in=$record do={
+        :if (([:typeof $fieldName] != "str") || (($fieldName != "provider") && \
+            ($fieldName != "hostname") && ($fieldName != "zoneid"))) do={
+            :log error ($logPrefix . "ERROR - record " . ($index + 1) . \
+                " has an unknown field (use provider, hostname, zoneid in lowercase)")
+            :error ($logPrefix . "invalid record field")
+        }
+    }
+
     :local provider ($record->"provider")
     :local hostname ($record->"hostname")
 
@@ -200,20 +198,20 @@
 
     :if ($provider = "cloudflare") do={
         :set usesCloudflare true
-        :local zoneId ($record->"zoneId")
+        :local zoneId ($record->"zoneid")
         :if (([:typeof $zoneId] != "str") || ($zoneId = $placeholderCloudflareZoneId)) do={
-            :log error ($logPrefix . "ERROR - zoneId is not set for " . $hostname)
-            :error ($logPrefix . "zoneId is not configured")
+            :log error ($logPrefix . "ERROR - zoneid is not set for " . $hostname)
+            :error ($logPrefix . "zoneid is not configured")
         }
         # Cloudflare zone IDs are 32 lowercase hex characters.
         :if ([:len $zoneId] != 32) do={
-            :log error ($logPrefix . "ERROR - zoneId must have 32 characters for " . $hostname)
-            :error ($logPrefix . "invalid zoneId")
+            :log error ($logPrefix . "ERROR - zoneid must have 32 characters for " . $hostname)
+            :error ($logPrefix . "invalid zoneid")
         }
         :for charIndex from=0 to=31 do={
             :if ([:typeof [:find $hexChars [:pick $zoneId $charIndex]]] != "num") do={
-                :log error ($logPrefix . "ERROR - zoneId must be lowercase hex for " . $hostname)
-                :error ($logPrefix . "invalid zoneId")
+                :log error ($logPrefix . "ERROR - zoneid must be lowercase hex for " . $hostname)
+                :error ($logPrefix . "invalid zoneid")
             }
         }
     } else={
@@ -292,12 +290,16 @@
         }
 
         :if ($lookupOk) do={
-            # Keep only the first line, without line endings.
+            # Keep only the first line, without line endings or trailing spaces.
             :local lineEnd [:find $answer "\n"]
             :if ([:typeof $lineEnd] = "num") do={
                 :set answer [:pick $answer 0 $lineEnd]
             }
             :set lineEnd [:find $answer "\r"]
+            :if ([:typeof $lineEnd] = "num") do={
+                :set answer [:pick $answer 0 $lineEnd]
+            }
+            :set lineEnd [:find $answer " "]
             :if ([:typeof $lineEnd] = "num") do={
                 :set answer [:pick $answer 0 $lineEnd]
             }
@@ -398,7 +400,7 @@
         :if ($provider = "cloudflare") do={
             # Look the A record up by name so its ID does not need to be configured.
             :local response [/tool fetch \
-                url=($cloudflareApiUrl . ($record->"zoneId") . "/dns_records?type=A&name=" . $hostname) \
+                url=($cloudflareApiUrl . ($record->"zoneid") . "/dns_records?type=A&name=" . $hostname) \
                 http-method=get http-header-field=$cloudflareHeaders \
                 check-certificate=$checkCertificate output=user as-value]
             # Keep JSON strings as strings; record IDs must not be turned into numbers.
@@ -433,6 +435,12 @@
         :set ($recordFailed->$index) true
         :set failedCount ($failedCount + 1)
         :log error ($logPrefix . "ERROR - cannot read " . $hostname . ": " . $readError)
+        # Cloudflare answers 401/403 without the header fetch expects, so the error text is cryptic.
+        :if (($provider = "cloudflare") && (([:typeof [:find $readError "401"]] = "num") || \
+            ([:typeof [:find $readError "403"]] = "num"))) do={
+            :log error ($logPrefix . "ERROR - check that the Cloudflare API token is valid" . \
+                " and can read DNS records of the zone of " . $hostname)
+        }
     }
 }
 
@@ -458,109 +466,88 @@
 # Update the DNS records that need it
 # ============================================================================
 
-# Release a No-IP "911" hold once its waiting time is over.
-:if (($MikrotikDDNSUpdaterNoipHold = "911") && \
-    ([:tonsec value=[/system resource get uptime]] >= $MikrotikDDNSUpdaterNoipRetryAt)) do={
-    # Globals must be bound again inside each nested block that changes them.
-    :global MikrotikDDNSUpdaterNoipHold
-    :set MikrotikDDNSUpdaterNoipHold ""
-    :log info ($logPrefix . "INFO - No-IP waiting time is over, updates resumed")
-}
-
 :foreach index,record in=$records do={
     :local provider ($record->"provider")
     :local hostname ($record->"hostname")
 
-    :global MikrotikDDNSUpdaterNoipHold
-    :global MikrotikDDNSUpdaterNoipRetryAt
-
     :if (($needsUpdate->$index) = true) do={
-        :local noipHoldCode ""
-
         :if ($dryRun) do={
             :log warning ($logPrefix . "WARNING - dry-run, " . $hostname . " not updated to " . $publicIp)
         } else={
-            :if (($provider = "noip") && ([:len $MikrotikDDNSUpdaterNoipHold] > 0)) do={
-                # No-IP blocks clients that keep sending requests after an error answer.
-                :set failedCount ($failedCount + 1)
-                :if ($MikrotikDDNSUpdaterNoipHold = "911") do={
-                    :log error ($logPrefix . "ERROR - No-IP server error (911), " . $hostname . \
-                        " not updated, waiting before retrying")
-                } else={
-                    :log error ($logPrefix . "ERROR - No-IP answered " . $MikrotikDDNSUpdaterNoipHold . \
-                        ", updates stopped. Fix it, then run: /system script environment remove" . \
-                        " [find name=\"MikrotikDDNSUpdaterNoipHold\"]")
-                }
-            } else={
-                :onerror updateError in={
-                    :if ($provider = "cloudflare") do={
-                        # Only the content is sent, so proxy status and TTL are kept.
-                        :local response [/tool fetch \
-                            url=($cloudflareApiUrl . ($record->"zoneId") . "/dns_records/" . ($recordIds->$index)) \
-                            http-method=patch http-header-field=$cloudflareHeaders \
-                            http-data=("{\"content\":\"" . $publicIp . "\"}") \
-                            check-certificate=$checkCertificate output=user as-value]
-                        :local responseJson [:deserialize from=json options=json.no-string-conversion \
-                            value=($response->"data")]
-                        :if (($responseJson->"success") != true) do={
-                            :error "Cloudflare answered success=false"
-                        }
-                    } else={
-                        :local response [/tool fetch \
-                            url=($noipUpdateUrl . "?hostname=" . $hostname . "&myip=" . $publicIp) \
-                            http-header-field=("Authorization:" . $noipAuthHeader) \
-                            check-certificate=$checkCertificate output=user as-value]
-                        :local answer [:tostr ($response->"data")]
-                        # The answer is a code, optionally followed by the IP ("good 1.2.3.4").
-                        :local answerCode $answer
-                        :local codeEnd [:find $answer " "]
-                        :if ([:typeof $codeEnd] = "num") do={
-                            :set answerCode [:pick $answer 0 $codeEnd]
-                        }
-                        :set codeEnd [:find $answerCode "\n"]
-                        :if ([:typeof $codeEnd] = "num") do={
-                            :set answerCode [:pick $answerCode 0 $codeEnd]
-                        }
-                        :set codeEnd [:find $answerCode "\r"]
-                        :if ([:typeof $codeEnd] = "num") do={
-                            :set answerCode [:pick $answerCode 0 $codeEnd]
-                        }
-
-                        # "good" = updated, "nochg" = already had this IP. Anything else is an error.
-                        :if (($answerCode != "good") && ($answerCode != "nochg")) do={
-                            :if (($answerCode = "911") || \
-                                ([:typeof [:find $noipStopCodes $answerCode]] = "num")) do={
-                                :set noipHoldCode $answerCode
-                            }
-                            :error ("No-IP answered " . $answerCode)
-                        }
+            :local noipFatal false
+            :onerror updateError in={
+                :if ($provider = "cloudflare") do={
+                    # Only the content is sent, so proxy status and TTL are kept.
+                    :local response [/tool fetch \
+                        url=($cloudflareApiUrl . ($record->"zoneid") . "/dns_records/" . ($recordIds->$index)) \
+                        http-method=patch http-header-field=$cloudflareHeaders \
+                        http-data=("{\"content\":\"" . $publicIp . "\"}") \
+                        check-certificate=$checkCertificate output=user as-value]
+                    :local responseJson [:deserialize from=json options=json.no-string-conversion \
+                        value=($response->"data")]
+                    :if (($responseJson->"success") != true) do={
+                        :error "Cloudflare answered success=false"
                     }
-                    :set updatedCount ($updatedCount + 1)
                     :log info ($logPrefix . "INFO - " . $hostname . " updated to " . $publicIp)
-                } do={
-                    :set failedCount ($failedCount + 1)
-                    # HTTP errors abort the request before the answer can be read.
-                    :if (($provider = "noip") && ([:len $noipHoldCode] = 0)) do={
-                        :if ([:typeof [:find $updateError "401"]] = "num") do={
-                            :set noipHoldCode "badauth"
-                        }
-                        :if ([:typeof [:find $updateError "500"]] = "num") do={
-                            :set noipHoldCode "911"
-                        }
+                } else={
+                    :local response [/tool fetch \
+                        url=($noipUpdateUrl . "?hostname=" . $hostname . "&myip=" . $publicIp) \
+                        http-header-field=("Authorization:" . $noipAuthHeader) \
+                        check-certificate=$checkCertificate output=user as-value]
+
+                    # The answer is a code, optionally followed by the IP ("good 1.2.3.4").
+                    :local answerLine [:tostr ($response->"data")]
+                    :local cutAt [:find $answerLine "\n"]
+                    :if ([:typeof $cutAt] = "num") do={
+                        :set answerLine [:pick $answerLine 0 $cutAt]
                     }
-                    :log error ($logPrefix . "ERROR - cannot update " . $hostname . ": " . $updateError)
+                    :set cutAt [:find $answerLine "\r"]
+                    :if ([:typeof $cutAt] = "num") do={
+                        :set answerLine [:pick $answerLine 0 $cutAt]
+                    }
+                    :local answerCode $answerLine
+                    :local answerIp ""
+                    :set cutAt [:find $answerLine " "]
+                    :if ([:typeof $cutAt] = "num") do={
+                        :set answerCode [:pick $answerLine 0 $cutAt]
+                        :set answerIp [:pick $answerLine ($cutAt + 1) [:len $answerLine]]
+                    }
+
+                    # "good" = updated, "nochg" = already had this IP. Anything else is an error.
+                    :if (($answerCode != "good") && ($answerCode != "nochg")) do={
+                        :if ([:typeof [:find $noipFatalCodes $answerCode]] = "num") do={
+                            :set noipFatal true
+                        }
+                        :error ("No-IP answered " . $answerLine)
+                    }
+                    :if ($answerCode = "good") do={
+                        :log info ($logPrefix . "INFO - " . $hostname . " updated to " . $publicIp . \
+                            " (No-IP: " . $answerLine . ")")
+                    } else={
+                        :log info ($logPrefix . "INFO - " . $hostname . " already had " . $publicIp . \
+                            " (No-IP: " . $answerLine . ")")
+                    }
+                    :if ($answerIp != [:tostr $publicIp]) do={
+                        :log warning ($logPrefix . "WARNING - No-IP did not keep " . $publicIp . \
+                            " for " . $hostname)
+                    }
+                }
+                :set updatedCount ($updatedCount + 1)
+            } do={
+                :set failedCount ($failedCount + 1)
+                :log error ($logPrefix . "ERROR - cannot update " . $hostname . ": " . $updateError)
+                # Authentication errors come back as HTTP 401/403 before any answer can be read.
+                :local authError (([:typeof [:find $updateError "401"]] = "num") || \
+                    ([:typeof [:find $updateError "403"]] = "num"))
+                :if (($provider = "cloudflare") && $authError) do={
+                    :log error ($logPrefix . "ERROR - check that the Cloudflare API token can edit" . \
+                        " DNS records of the zone of " . $hostname)
+                }
+                :if (($provider = "noip") && ($noipFatal || $authError)) do={
+                    :log error ($logPrefix . "ERROR - fix the No-IP account or hostname now:" . \
+                        " No-IP may block clients that keep sending failing updates")
                 }
             }
-        }
-
-        :if ([:len $noipHoldCode] > 0) do={
-            :global MikrotikDDNSUpdaterNoipHold
-            :global MikrotikDDNSUpdaterNoipRetryAt
-            :set MikrotikDDNSUpdaterNoipHold $noipHoldCode
-            # Plain numbers (nanoseconds) avoid relying on time arithmetic.
-            :set MikrotikDDNSUpdaterNoipRetryAt ([:tonsec value=[/system resource get uptime]] + \
-                [:tonsec value=$noipRetryDelay])
-            :log warning ($logPrefix . "WARNING - No-IP updates stopped after answer " . $noipHoldCode)
         }
     }
 }
