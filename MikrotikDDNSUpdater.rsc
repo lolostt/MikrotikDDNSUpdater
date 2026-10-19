@@ -5,7 +5,7 @@
 # https://github.com/lolostt/MikrotikDDNSUpdater
 # Copyright (C) 2026 Sleeping Coconut https://sleepingcoconut.com
 #
-# Updates Cloudflare and No-IP DNS records with the router's current public IPv4 address.
+# Updates Cloudflare and/or No-IP DNS records with the router's current public IPv4 address.
 # Requires RouterOS 7.23.4 or newer.
 #
 # Usage:
@@ -19,6 +19,25 @@
 # User configuration
 # ============================================================================
 
+# DNS records to keep updated. Field names and hostnames must be lowercase.
+#   Cloudflare: {provider="cloudflare"; hostname="home.example.com"; zoneid="<zone ID>"}
+#   No-IP:      {provider="noip"; hostname="home.ddns.net"}
+:local records {
+    {provider="cloudflare"; hostname="SUBDOMAIN.DOMAIN.COM"; zoneid="CLOUDFLARE_ZONE_ID"};
+    {provider="noip"; hostname="SUBDOMAIN.DOMAIN.COM"}
+}
+
+# No-IP account. The username can be the account email. Only needed for No-IP records.
+:local noipUsername "USER@DOMAIN.COM"
+:local noipPassword "PASSWORD"
+
+# ----------------------------------------------------------------------------
+
+# Cloudflare API token with Zone > DNS > Edit permission. Only needed for Cloudflare records.
+:local cloudflareApiToken "CLOUDFLARE_API_TOKEN"
+
+# ----------------------------------------------------------------------------
+
 # true = check everything but do not change any DNS record.
 :local dryRun true
 
@@ -30,21 +49,6 @@
 # TLS certificate check for HTTPS requests: "yes", "yes-without-crl" or "no".
 # "no" is not recommended: credentials travel in these requests.
 :local checkCertificate "yes-without-crl"
-
-# Cloudflare API token with Zone > DNS > Edit permission. Only needed for Cloudflare records.
-:local cloudflareApiToken "CLOUDFLARE_API_TOKEN"
-
-# No-IP account. The username can be the account email. Only needed for No-IP records.
-:local noipUsername "USER@DOMAIN.COM"
-:local noipPassword "PASSWORD"
-
-# DNS records to keep updated. Field names and hostnames must be lowercase.
-#   Cloudflare: {provider="cloudflare"; hostname="home.example.com"; zoneid="<zone ID>"}
-#   No-IP:      {provider="noip"; hostname="home.ddns.net"}
-:local records {
-    {provider="cloudflare"; hostname="SUBDOMAIN.DOMAIN.COM"; zoneid="CLOUDFLARE_ZONE_ID"};
-    {provider="noip"; hostname="SUBDOMAIN.DOMAIN.COM"}
-}
 
 # ============================================================================
 # Hardcoded values
