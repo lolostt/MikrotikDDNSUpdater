@@ -1,11 +1,11 @@
 #!rsc by RouterOS
 # MikrotikDDNSUpdater
-# Build: 12
+# Build: 13
 #
 # https://github.com/lolostt/MikrotikDDNSUpdater
 # Copyright (C) 2026 Sleeping Coconut https://sleepingcoconut.com
 #
-# Updates Cloudflare and/or No-IP DNS records with the router's current public IPv4 address.
+# Updates Cloudflare, No-IP and/or DuckDNS DNS records with the router's current public IPv4 address.
 # Requires RouterOS 7.23.4 or newer.
 #
 # Usage:
@@ -22,6 +22,7 @@
 # DNS records to keep updated. Field names and hostnames must be lowercase.
 #   Cloudflare: {provider="cloudflare"; hostname="home.example.com"; zoneid="<zone ID>"}
 #   No-IP:      {provider="noip"; hostname="home.ddns.net"}
+#   DuckDNS:    {provider="duckdns"; hostname="home.duckdns.org"}
 :local records {
     {provider="cloudflare"; hostname="SUBDOMAIN.DOMAIN.COM"; zoneid="CLOUDFLARE_ZONE_ID"};
     {provider="noip"; hostname="SUBDOMAIN.DOMAIN.COM"}
@@ -35,6 +36,11 @@
 
 # Cloudflare API token with Zone > DNS > Edit permission. Only needed for Cloudflare records.
 :local cloudflareApiToken "CLOUDFLARE_API_TOKEN"
+
+# ----------------------------------------------------------------------------
+
+# DuckDNS account token, shown on duckdns.org after signing in. Only needed for DuckDNS records.
+:local duckdnsToken "DUCKDNS_TOKEN"
 
 # ----------------------------------------------------------------------------
 
@@ -88,12 +94,18 @@
 # No-IP answers that must be fixed by the user; No-IP may block clients that keep retrying.
 :local noipFatalCodes {"nohost"; "badauth"; "badagent"; "!donator"; "abuse"}
 
+# DuckDNS update API, authoritative name server and the suffix every DuckDNS hostname ends with.
+:local duckdnsUpdateUrl "https://www.duckdns.org/update"
+:local duckdnsNameServer "ns1.duckdns.org"
+:local duckdnsSuffix ".duckdns.org"
+
 # Placeholders used to detect unedited configuration.
 :local placeholderHostname "SUBDOMAIN.DOMAIN.COM"
 :local placeholderCloudflareApiToken "CLOUDFLARE_API_TOKEN"
 :local placeholderCloudflareZoneId "CLOUDFLARE_ZONE_ID"
 :local placeholderNoipUsername "USER@DOMAIN.COM"
 :local placeholderNoipPassword "PASSWORD"
+:local placeholderDuckdnsToken "DUCKDNS_TOKEN"
 
 # Allowed characters for format checks.
 :local hostnameChars "abcdefghijklmnopqrstuvwxyz0123456789.-"
@@ -110,6 +122,8 @@
 :local cloudflareHeaders ""
 :local noipAuthHeader ""
 :local noipNameServerIp ""
+:local usesDuckdns false
+:local duckdnsNameServerIp ""
 :local publicIp ""
 # Per-record state, indexed like $records. [:toarray ""] is the documented empty array.
 :local recordIds [:toarray ""]
@@ -222,9 +236,23 @@
         :if ($provider = "noip") do={
             :set usesNoip true
         } else={
-            :log error ($logPrefix . "ERROR - unknown provider for " . $hostname . \
-                " (use cloudflare or noip)")
-            :error ($logPrefix . "invalid provider")
+            :if ($provider = "duckdns") do={
+                :set usesDuckdns true
+                # DuckDNS only updates names directly under duckdns.org; deeper names
+                # (a.home.duckdns.org) follow the IP of their parent.
+                :local suffixStart ([:len $hostname] - [:len $duckdnsSuffix])
+                :if (($suffixStart < 1) || \
+                    ([:pick $hostname $suffixStart [:len $hostname]] != $duckdnsSuffix) || \
+                    ([:typeof [:find [:pick $hostname 0 $suffixStart] "."]] = "num")) do={
+                    :log error ($logPrefix . "ERROR - DuckDNS hostname must be <name>" . \
+                        $duckdnsSuffix . ": " . $hostname)
+                    :error ($logPrefix . "invalid DuckDNS hostname")
+                }
+            } else={
+                :log error ($logPrefix . "ERROR - unknown provider for " . $hostname . \
+                    " (use cloudflare, noip or duckdns)")
+                :error ($logPrefix . "invalid provider")
+            }
         }
     }
 }
@@ -262,6 +290,34 @@
     }
     :set noipAuthHeader ("Basic " . [:convert ($noipUsername . ":" . $noipPassword) \
         from=raw to=base64])
+}
+
+:if ($usesDuckdns) do={
+    :if (([:len $duckdnsToken] = 0) || ($duckdnsToken = $placeholderDuckdnsToken)) do={
+        :log error ($logPrefix . "ERROR - DuckDNS token is not set")
+        :error ($logPrefix . "DuckDNS token is not configured")
+    }
+    # DuckDNS tokens are UUIDs: 36 lowercase hex characters with hyphens at 8, 13, 18 and 23.
+    :local tokenOk ([:len $duckdnsToken] = 36)
+    :if ($tokenOk) do={
+        :for charIndex from=0 to=35 do={
+            :local tokenChar [:pick $duckdnsToken $charIndex]
+            :if (($charIndex = 8) || ($charIndex = 13) || ($charIndex = 18) || ($charIndex = 23)) do={
+                :if ($tokenChar != "-") do={
+                    :set tokenOk false
+                }
+            } else={
+                :if ([:typeof [:find $hexChars $tokenChar]] != "num") do={
+                    :set tokenOk false
+                }
+            }
+        }
+    }
+    :if ($tokenOk = false) do={
+        :log error ($logPrefix . "ERROR - DuckDNS token must look like" . \
+            " xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (lowercase hex)")
+        :error ($logPrefix . "invalid DuckDNS token")
+    }
 }
 
 :log info ($logPrefix . "INFO - configuration OK, " . $recordCount . " records")
@@ -386,13 +442,21 @@
     :set recordFailed ($recordFailed, false)
 }
 
-# Ask No-IP's own name server; fall back to the router's resolver if it cannot be found.
+# Ask each provider's own name server; fall back to the router's resolver if it cannot be found.
 :if ($usesNoip) do={
     :onerror nameServerError in={
         :set noipNameServerIp [:resolve domain-name=$noipNameServer type=ipv4]
     } do={
         :log warning ($logPrefix . "WARNING - cannot resolve " . $noipNameServer . \
             ", using the router's DNS for No-IP records")
+    }
+}
+:if ($usesDuckdns) do={
+    :onerror nameServerError in={
+        :set duckdnsNameServerIp [:resolve domain-name=$duckdnsNameServer type=ipv4]
+    } do={
+        :log warning ($logPrefix . "WARNING - cannot resolve " . $duckdnsNameServer . \
+            ", using the router's DNS for DuckDNS records")
     }
 }
 
@@ -422,10 +486,15 @@
             }
             :set ($recordIds->$index) [:tostr (($matches->0)->"id")]
             :set ($dnsIps->$index) [:toip (($matches->0)->"content")]
-        } else={
-            :if ([:typeof $noipNameServerIp] = "ip") do={
+        }
+        :if (($provider = "noip") || ($provider = "duckdns")) do={
+            :local nameServerIp $noipNameServerIp
+            :if ($provider = "duckdns") do={
+                :set nameServerIp $duckdnsNameServerIp
+            }
+            :if ([:typeof $nameServerIp] = "ip") do={
                 :set ($dnsIps->$index) [:resolve domain-name=$hostname \
-                    server=$noipNameServerIp type=ipv4]
+                    server=$nameServerIp type=ipv4]
             } else={
                 :set ($dnsIps->$index) [:resolve domain-name=$hostname type=ipv4]
             }
@@ -479,6 +548,7 @@
             :log warning ($logPrefix . "WARNING - dry-run, " . $hostname . " not updated to " . $publicIp)
         } else={
             :local noipFatal false
+            :local duckdnsRejected false
             :onerror updateError in={
                 :if ($provider = "cloudflare") do={
                     # Only the content is sent, so proxy status and TTL are kept.
@@ -493,7 +563,8 @@
                         :error "Cloudflare answered success=false"
                     }
                     :log info ($logPrefix . "INFO - " . $hostname . " updated to " . $publicIp)
-                } else={
+                }
+                :if ($provider = "noip") do={
                     :local response [/tool fetch \
                         url=($noipUpdateUrl . "?hostname=" . $hostname . "&myip=" . $publicIp) \
                         http-header-field=("Authorization:" . $noipAuthHeader) \
@@ -536,10 +607,71 @@
                             " for " . $hostname)
                     }
                 }
+                :if ($provider = "duckdns") do={
+                    # DuckDNS wants the name without .duckdns.org. One request per record keeps
+                    # each failure tied to its own hostname.
+                    :local subdomain [:pick $hostname 0 ([:len $hostname] - [:len $duckdnsSuffix])]
+                    :local response [/tool fetch \
+                        url=($duckdnsUpdateUrl . "?domains=" . $subdomain . "&token=" . $duckdnsToken . \
+                            "&ip=" . $publicIp . "&verbose=true") \
+                        check-certificate=$checkCertificate output=user as-value]
+
+                    # Verbose answer, one item per line: OK or KO, IPv4, IPv6, UPDATED or NOCHANGE.
+                    :local answer [:tostr ($response->"data")]
+                    :local answerLines [:toarray ""]
+                    :local lineText ""
+                    # One extra step past the end closes the last line.
+                    :for charIndex from=0 to=[:len $answer] do={
+                        :local currentChar "\n"
+                        :if ($charIndex < [:len $answer]) do={
+                            :set currentChar [:pick $answer $charIndex]
+                        }
+                        :if ($currentChar = "\n") do={
+                            :set answerLines ($answerLines, $lineText)
+                            :set lineText ""
+                        } else={
+                            :if ($currentChar != "\r") do={
+                                :set lineText ($lineText . $currentChar)
+                            }
+                        }
+                    }
+                    :local answerStatus [:tostr ($answerLines->0)]
+                    :local answerIp [:tostr ($answerLines->1)]
+                    :local answerChange [:tostr ($answerLines->3)]
+
+                    :if ($answerStatus = "KO") do={
+                        :set duckdnsRejected true
+                        :error "DuckDNS answered KO"
+                    }
+                    :if ($answerStatus != "OK") do={
+                        :error ("DuckDNS answered " . $answerStatus)
+                    }
+                    :if ($answerChange = "NOCHANGE") do={
+                        :log info ($logPrefix . "INFO - " . $hostname . " already had " . $publicIp . \
+                            " (DuckDNS: OK " . $answerChange . ")")
+                    } else={
+                        :log info ($logPrefix . "INFO - " . $hostname . " updated to " . $publicIp . \
+                            " (DuckDNS: OK " . $answerChange . ")")
+                    }
+                    :if ($answerIp != [:tostr $publicIp]) do={
+                        :log warning ($logPrefix . "WARNING - DuckDNS did not keep " . $publicIp . \
+                            " for " . $hostname)
+                    }
+                }
                 :set updatedCount ($updatedCount + 1)
             } do={
                 :set failedCount ($failedCount + 1)
-                :log error ($logPrefix . "ERROR - cannot update " . $hostname . ": " . $updateError)
+                # The DuckDNS token travels in the URL; never copy it to the log if fetch quotes it.
+                :local errorText [:tostr $updateError]
+                :if ($usesDuckdns) do={
+                    :local tokenAt [:find $errorText $duckdnsToken]
+                    :while ([:typeof $tokenAt] = "num") do={
+                        :set errorText ([:pick $errorText 0 $tokenAt] . "<token>" . \
+                            [:pick $errorText ($tokenAt + [:len $duckdnsToken]) [:len $errorText]])
+                        :set tokenAt [:find $errorText $duckdnsToken]
+                    }
+                }
+                :log error ($logPrefix . "ERROR - cannot update " . $hostname . ": " . $errorText)
                 # Authentication errors come back as HTTP 401/403 before any answer can be read.
                 :local authError (([:typeof [:find $updateError "401"]] = "num") || \
                     ([:typeof [:find $updateError "403"]] = "num"))
@@ -550,6 +682,10 @@
                 :if (($provider = "noip") && ($noipFatal || $authError)) do={
                     :log error ($logPrefix . "ERROR - fix the No-IP account or hostname now:" . \
                         " No-IP may block clients that keep sending failing updates")
+                }
+                :if (($provider = "duckdns") && ($duckdnsRejected || $authError)) do={
+                    :log error ($logPrefix . "ERROR - check the DuckDNS token and that " . $hostname . \
+                        " belongs to the account")
                 }
             }
         }

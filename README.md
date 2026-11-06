@@ -1,5 +1,5 @@
 # MikrotikDDNSUpdater
-A RouterOS script that keeps Cloudflare and/or No-IP DNS records pointing to the router's current public IPv4 address.
+A RouterOS script that keeps Cloudflare, No-IP and/or DuckDNS DNS records pointing to the router's current public IPv4 address.
 
 ## Getting Started
 ### Prerequisites
@@ -9,6 +9,7 @@ A RouterOS script that keeps Cloudflare and/or No-IP DNS records pointing to the
 #### Accounts
 - **Cloudflare:** an API token with *Zone > DNS > Edit* permission, and the Zone ID of each domain (domain *Overview* page, *API* section). The A record must already exist.
 - **No-IP:** the account email and password. The hostname must already exist in the account.
+- **DuckDNS:** the account token, shown on the duckdns.org main page after signing in. The subdomain must already exist in the account.
 
 ### Installing
 1. Download, clone or copy `MikrotikDDNSUpdater.rsc` on your local computer.
@@ -18,7 +19,7 @@ A RouterOS script that keeps Cloudflare and/or No-IP DNS records pointing to the
 5. Run it once with `dryRun` set to `true` and check the log.
 6. Set `dryRun` to `false` and automate execution using RouterOS scheduler. See below.
 
-> **Security note:** if you add the script from the terminal (`/system script add ... source=...`), RouterOS writes the whole source, credentials included, to the system log. Paste it in Winbox or WebFig instead, and take extra care if the log is sent to a remote syslog server.
+> **Security note:** if you add the script from the terminal (`/system script add ... source=...`), RouterOS writes the whole source, credentials included, to the system log. Paste it in Winbox or WebFig instead, and take extra care if the log is sent to a remote syslog server. The DuckDNS API only accepts the token in the URL; the script never writes it to the log.
 
 ## Usage
 You can run the script manually using Winbox or WebFig under System > Scripts section. Don't forget proper permissions.
@@ -32,15 +33,17 @@ You can also run it from terminal:
 ```
 
 ### Configuration
-- **records** (array): DNS records to keep updated, one entry per hostname. There can be one or several records per provider, and both providers can be mixed. Field names and hostnames must be lowercase (RouterOS reads an unquoted key with capitals, such as `zoneId=`, as a comparison).
+- **records** (array): DNS records to keep updated, one entry per hostname. There can be one or several records per provider, and providers can be mixed. The hostname is always the full name, also for DuckDNS (`home.duckdns.org`, not `home`). Field names and hostnames must be lowercase (RouterOS reads an unquoted key with capitals, such as `zoneId=`, as a comparison).
     ```
     :local records {
         {provider="cloudflare"; hostname="home.example.com"; zoneid="<zone ID>"};
-        {provider="noip"; hostname="home.ddns.net"}
+        {provider="noip"; hostname="home.ddns.net"};
+        {provider="duckdns"; hostname="home.duckdns.org"}
     }
     ```
 - **noipUsername** / **noipPassword** (string): No-IP account. Only needed for No-IP records.
 - **cloudflareApiToken** (string): Cloudflare API token. Only needed for Cloudflare records.
+- **duckdnsToken** (string): DuckDNS account token (`xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`). Only needed for DuckDNS records.
 - **dryRun** (boolean): `true` checks everything but does not change any DNS record. Enabled by default.
 - **publicIpService** (string) selects the method for determining the current public IP address:
     - `auto` (default) tries every service in order until one answers: icanhazip, ipify, Amazon, ipinfo and Mikrotik.
@@ -53,18 +56,20 @@ Script uses system log to show execution results and errors. Every message start
 Script has 5 stages:
 1. Configuration validation. Credentials are only required for the providers in use.
 2. Get public IP address. Only valid public IPv4 addresses are accepted (private, CGNAT, loopback, multicast and reserved ranges are rejected).
-3. Get the current IP address of each record: through Cloudflare API for Cloudflare, and by asking No-IP's own name server for No-IP.
+3. Get the current IP address of each record: through Cloudflare API for Cloudflare, and by asking each provider's own name server for No-IP and DuckDNS.
 4. IP addresses comparison.
-5. Update of the records that need it. Cloudflare keeps proxy status and TTL. No-IP is only contacted when the IP has changed, as No-IP requires.
+5. Update of the records that need it. Cloudflare keeps proxy status and TTL. No-IP and DuckDNS are only contacted when the IP has changed.
 
 A record that fails does not stop the others: the remaining records are still processed and the script ends with an error.
 
 If No-IP answers `badauth`, `nohost` or a similar error, fix the account or hostname as soon as possible: No-IP may block clients that keep sending failing updates.
 
+If DuckDNS answers `KO`, the token is wrong or the subdomain does not belong to the account. DuckDNS gives no other detail.
+
 Each run takes about one second and writes around 8 lines to the log. It does not write to flash storage, unless your logging configuration sends script messages to disk.
 
 ### Automation
-You can automate execution in order to set and forget the script. You can do that by using RouterOS scheduler under System > Scheduler section. The scheduler entry needs the same "read" and "test" permissions. Running it every 15 minutes is recommended: it stays far below Cloudflare API limits and No-IP only receives a request when the IP changes.
+You can automate execution in order to set and forget the script. You can do that by using RouterOS scheduler under System > Scheduler section. The scheduler entry needs the same "read" and "test" permissions. Running it every 15 minutes is recommended: it stays far below Cloudflare API limits and No-IP and DuckDNS only receive a request when the IP changes.
 
 ```
 /system scheduler add name=MikrotikDDNSUpdater interval=15m policy=read,test on-event="/system script run MikrotikDDNSUpdater"
