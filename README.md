@@ -58,7 +58,7 @@ You can also run it from terminal:
 ```
 
 ### Configuration
-- **records** (array): DNS records to keep updated, one entry per hostname. There can be one or several records per provider, and providers can be mixed. The hostname is always the full name, also for DuckDNS (`home.duckdns.org`, not `home`). Field names and hostnames must be lowercase (RouterOS reads an unquoted key with capitals, such as `zoneId=`, as a comparison).
+- **records** (array): DNS records to keep updated, one entry per hostname. In interface mode, an entry can also carry an `interface` field. There can be one or several records per provider, and providers can be mixed. The hostname is always the full name, also for DuckDNS (`home.duckdns.org`, not `home`). Field names and hostnames must be lowercase (RouterOS reads an unquoted key with capitals, such as `zoneId=`, as a comparison).
     ```
     :local records {
         {provider="duckdns"; hostname="home.duckdns.org"};
@@ -73,14 +73,31 @@ You can also run it from terminal:
 - **publicIpService** (string) selects the method for determining the current public IP address:
     - `auto` (default) tries every service in order until one answers: icanhazip, ipify, Amazon, ipinfo and Mikrotik.
     - `icanhazip`, `ipify`, `amazon`, `ipinfo` or `mikrotik` uses only that service. `mikrotik` reads IP > Cloud and only works if IP Cloud DDNS is already enabled.
+    - `interface` reads the IPv4 address of a router interface instead of asking an external service (see [Interface mode](#interface-mode-multi-wan-and-cgnat)).
+- **wanInterface** (string): only used with `publicIpService` set to `interface`. The interface that holds the public IPv4 address, such as `pppoe-out1`.
 - **checkCertificate** (string): TLS certificate check for HTTPS requests, `yes`, `yes-without-crl` (default) or `no`. `no` is not recommended because credentials travel in these requests. RouterOS built-in trust store is enough, no certificates need to be imported.
+
+### Interface mode (multi-WAN and CGNAT)
+Setting `publicIpService` to `interface` makes the script read the public IP from a router interface instead of asking an external service. It is meant for routers whose WAN interface holds the public IPv4 address itself (PPPoE, or DHCP from an ONT in bridge mode):
+- **Multi-WAN:** each record follows the interface you choose, not whichever WAN the default route uses at that moment. `wanInterface` is used by every record, and a record can follow another WAN by adding an `interface` field:
+    ```
+    :local records {
+        {provider="noip"; hostname="home.ddns.net"};
+        {provider="cloudflare"; hostname="backup.example.com"; zoneid="<zone ID>"; interface="ether2"}
+    }
+    :local publicIpService "interface"
+    :local wanInterface "pppoe-out1"
+    ```
+- **CGNAT and double NAT detection:** if the interface has a CGNAT address (`100.64.0.0/10`), the log says the ISP shares the public IP and the router cannot be reached from the Internet. If it has a private address, the router is behind another NAT device and `publicIpService` must stay `auto`. In both cases the records on that interface are not updated and the script ends with an error.
+
+Use the name of the interface that holds the address (IP > Addresses): `pppoe-out1` rather than the Ethernet port under it, or the bridge or VLAN if the address is set there. The `interface` field is only accepted in this mode.
 
 ### Script behaviour
 Script uses system log to show execution results and errors. Every message starts with `MikrotikDDNSUpdater:` followed by `INFO -`, `WARNING -` or `ERROR -`. If anything fails, the script ends with an error, so failures are never silent.
 
 Script has 5 stages:
 1. Configuration validation. Credentials are only required for the providers in use.
-2. Get public IP address. Only valid public IPv4 addresses are accepted (private, CGNAT, loopback, multicast and reserved ranges are rejected).
+2. Get public IP address, from the external services or, in interface mode, from each record's interface. Only valid public IPv4 addresses are accepted (private, CGNAT, loopback, multicast and reserved ranges are rejected).
 3. Get the current IP address of each record: through Cloudflare API for Cloudflare, and by asking each provider's own name server for No-IP and DuckDNS.
 4. IP addresses comparison.
 5. Update of the records that need it. Cloudflare keeps proxy status and TTL. No-IP and DuckDNS are only contacted when the IP has changed.

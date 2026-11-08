@@ -23,6 +23,8 @@
 #   DuckDNS:    {provider="duckdns"; hostname="home.duckdns.org"}
 #   No-IP:      {provider="noip"; hostname="home.ddns.net"}
 #   Cloudflare: {provider="cloudflare"; hostname="home.example.com"; zoneid="<zone ID>"}
+# Only with publicIpService "interface", any record can follow another WAN by adding
+# interface="<name>", e.g. {provider="noip"; hostname="home2.ddns.net"; interface="ether2"}
 
 :local records {
     {provider="duckdns"; hostname="SUBDOMAIN.DOMAIN.COM"};
@@ -54,7 +56,13 @@
 # "auto" tries every public IP service in order until one answers.
 # Set "icanhazip", "ipify", "amazon", "ipinfo" or "mikrotik" to use only that service.
 # "mikrotik" reads /ip cloud and only works if IP Cloud DDNS is already enabled.
+# "interface" reads the IPv4 address of a router interface instead (see wanInterface).
 :local publicIpService "auto"
+
+# Only for publicIpService "interface": the interface that holds the public IPv4 address,
+# e.g. "pppoe-out1". Records with their own interface field do not use it. A private or
+# CGNAT address on the interface is reported as an error.
+:local wanInterface "WAN_INTERFACE"
 
 # TLS certificate check for HTTPS requests: "yes", "yes-without-crl" or "no".
 # "no" is not recommended: credentials travel in these requests.
@@ -89,6 +97,10 @@
     {240.0.0.0; 240.0.0.0}
 }
 
+# Carrier-grade NAT range: the ISP shares one public IP among several customers.
+:local cgnatNetwork 100.64.0.0
+:local cgnatNetmask 255.192.0.0
+
 # Cloudflare API.
 :local cloudflareApiUrl "https://api.cloudflare.com/client/v4/zones/"
 
@@ -110,6 +122,7 @@
 :local placeholderNoipUsername "USER@DOMAIN.COM"
 :local placeholderNoipPassword "PASSWORD"
 :local placeholderDuckdnsToken "DUCKDNS_TOKEN"
+:local placeholderWanInterface "WAN_INTERFACE"
 
 # Allowed characters for format checks.
 :local hostnameChars "abcdefghijklmnopqrstuvwxyz0123456789.-"
@@ -131,6 +144,8 @@
 :local publicIp ""
 # Per-record state, indexed like $records. [:toarray ""] is the documented empty array.
 :local recordIds [:toarray ""]
+:local recordInterfaces [:toarray ""]
+:local recordIps [:toarray ""]
 :local dnsIps [:toarray ""]
 :local needsUpdate [:toarray ""]
 :local recordFailed [:toarray ""]
@@ -148,7 +163,7 @@
     :error ($logPrefix . "invalid dryRun")
 }
 
-:if (($publicIpService != "auto") && \
+:if (($publicIpService != "auto") && ($publicIpService != "interface") && \
     ([:typeof [:find $publicIpServiceOrder $publicIpService]] != "num")) do={
     :log error ($logPrefix . "ERROR - unknown publicIpService: " . $publicIpService)
     :error ($logPrefix . "invalid publicIpService")
@@ -179,9 +194,10 @@
     # comparison, which shows up here as a numbered entry instead of a named one.
     :foreach fieldName,fieldValue in=$record do={
         :if (([:typeof $fieldName] != "str") || (($fieldName != "provider") && \
-            ($fieldName != "hostname") && ($fieldName != "zoneid"))) do={
+            ($fieldName != "hostname") && ($fieldName != "zoneid") && \
+            ($fieldName != "interface"))) do={
             :log error ($logPrefix . "ERROR - record " . ($index + 1) . \
-                " has an unknown field (use provider, hostname, zoneid in lowercase)")
+                " has an unknown field (use provider, hostname, zoneid, interface in lowercase)")
             :error ($logPrefix . "invalid record field")
         }
     }
@@ -217,6 +233,36 @@
             :error ($logPrefix . "duplicated hostname")
         }
     }
+
+    # Interface mode: each record uses its own interface field, or wanInterface.
+    :local recordInterface ""
+    :if ([:typeof ($record->"interface")] != "nothing") do={
+        :if ($publicIpService != "interface") do={
+            :log error ($logPrefix . "ERROR - interface in " . $hostname . \
+                " only works with publicIpService interface")
+            :error ($logPrefix . "interface field without interface mode")
+        }
+        :set recordInterface ($record->"interface")
+        :if (([:typeof $recordInterface] != "str") || ([:len $recordInterface] = 0)) do={
+            :log error ($logPrefix . "ERROR - interface is empty in " . $hostname)
+            :error ($logPrefix . "invalid interface")
+        }
+    } else={
+        :if ($publicIpService = "interface") do={
+            :if (([:len $wanInterface] = 0) || ($wanInterface = $placeholderWanInterface)) do={
+                :log error ($logPrefix . "ERROR - wanInterface is not set (needed by " . \
+                    $hostname . ")")
+                :error ($logPrefix . "wanInterface is not configured")
+            }
+            :set recordInterface $wanInterface
+        }
+    }
+    :if (([:len $recordInterface] > 0) && \
+        ([:len [/interface find where name=$recordInterface]] = 0)) do={
+        :log error ($logPrefix . "ERROR - interface not found: " . $recordInterface)
+        :error ($logPrefix . "interface not found")
+    }
+    :set recordInterfaces ($recordInterfaces, $recordInterface)
 
     :if ($provider = "cloudflare") do={
         :set usesCloudflare true
@@ -430,21 +476,94 @@
     }
 }
 
-:if ([:typeof $publicIp] != "ip") do={
+:if (($publicIpService != "interface") && ([:typeof $publicIp] != "ip")) do={
     :log error ($logPrefix . "ERROR - unable to get the public IP from any service")
     :error ($logPrefix . "unable to get the public IP")
+}
+
+# Every record gets the same public IP, unless interface mode sets each one below.
+:for index from=0 to=($recordCount - 1) do={
+    :set recordIds ($recordIds, "")
+    :set recordIps ($recordIps, $publicIp)
+    :set dnsIps ($dnsIps, "")
+    :set needsUpdate ($needsUpdate, false)
+    :set recordFailed ($recordFailed, false)
+}
+
+# Interface mode: read the address of each record's interface (several WANs are allowed).
+:if ($publicIpService = "interface") do={
+    :foreach index,record in=$records do={
+        :local hostname ($record->"hostname")
+        :local interfaceName ($recordInterfaces->$index)
+        :local interfaceIp ""
+        :local alreadyRead false
+
+        # Reuse the result of an earlier record on the same interface.
+        :foreach otherIndex,otherInterface in=$recordInterfaces do={
+            :if (($otherIndex < $index) && ($otherInterface = $interfaceName) && \
+                ($alreadyRead = false)) do={
+                :set alreadyRead true
+                :set interfaceIp ($recordIps->$otherIndex)
+            }
+        }
+
+        :if ($alreadyRead = false) do={
+            :onerror interfaceError in={
+                :local addressIds [/ip address find where interface=$interfaceName \
+                    disabled=no invalid=no]
+                :if ([:len $addressIds] = 0) do={
+                    :error "no IPv4 address on the interface"
+                }
+                :if ([:len $addressIds] > 1) do={
+                    :log warning ($logPrefix . "WARNING - " . $interfaceName . \
+                        " has several IPv4 addresses, using the first one")
+                }
+                # The address comes with its prefix length ("203.0.113.5/32").
+                :local address [:tostr [/ip address get ($addressIds->0) address]]
+                :set interfaceIp [:toip [:pick $address 0 [:find $address "/"]]]
+            } do={
+                :log error ($logPrefix . "ERROR - cannot read the IPv4 address of " . \
+                    $interfaceName . ": " . $interfaceError)
+            }
+
+            :if ([:typeof $interfaceIp] = "ip") do={
+                :local isPublic true
+                :foreach range in=$nonPublicRanges do={
+                    :if (($interfaceIp & ($range->1)) = ($range->0)) do={
+                        :set isPublic false
+                    }
+                }
+                :if ($isPublic) do={
+                    :log info ($logPrefix . "INFO - public IP is " . $interfaceIp . \
+                        " (" . $interfaceName . ")")
+                } else={
+                    :if (($interfaceIp & $cgnatNetmask) = $cgnatNetwork) do={
+                        :log error ($logPrefix . "ERROR - " . $interfaceName . " has " . \
+                            $interfaceIp . ", a CGNAT address: the ISP shares the public IP and" . \
+                            " the router cannot be reached from the Internet")
+                    } else={
+                        :log error ($logPrefix . "ERROR - " . $interfaceName . " has the private" . \
+                            " address " . $interfaceIp . ": the router is behind another NAT" . \
+                            " device, use publicIpService auto")
+                    }
+                    :set interfaceIp ""
+                }
+            }
+        }
+
+        :set ($recordIps->$index) $interfaceIp
+        :if ([:typeof $interfaceIp] != "ip") do={
+            :set ($recordFailed->$index) true
+            :set failedCount ($failedCount + 1)
+            :log error ($logPrefix . "ERROR - " . $hostname . " skipped: no public IP on " . \
+                $interfaceName)
+        }
+    }
 }
 
 # ============================================================================
 # Get the current IP address of each DNS record
 # ============================================================================
-
-:for index from=0 to=($recordCount - 1) do={
-    :set recordIds ($recordIds, "")
-    :set dnsIps ($dnsIps, "")
-    :set needsUpdate ($needsUpdate, false)
-    :set recordFailed ($recordFailed, false)
-}
 
 # Ask each provider's own name server; fall back to the router's resolver if it cannot be found.
 :if ($usesNoip) do={
@@ -509,8 +628,10 @@
         }
         :log info ($logPrefix . "INFO - " . $hostname . " points to " . ($dnsIps->$index))
     } do={
-        :set ($recordFailed->$index) true
-        :set failedCount ($failedCount + 1)
+        :if (($recordFailed->$index) = false) do={
+            :set ($recordFailed->$index) true
+            :set failedCount ($failedCount + 1)
+        }
         :log error ($logPrefix . "ERROR - cannot read " . $hostname . ": " . $readError)
         # Cloudflare answers 401/403 without the header fetch expects, so the error text is cryptic.
         :if (($provider = "cloudflare") && (([:typeof [:find $readError "401"]] = "num") || \
@@ -527,14 +648,15 @@
 
 :foreach index,record in=$records do={
     :local hostname ($record->"hostname")
+    :local recordIp ($recordIps->$index)
 
     :if (($recordFailed->$index) = false) do={
-        :if ([:tostr ($dnsIps->$index)] = [:tostr $publicIp]) do={
+        :if ([:tostr ($dnsIps->$index)] = [:tostr $recordIp]) do={
             :log info ($logPrefix . "INFO - " . $hostname . " is up to date")
         } else={
             :set ($needsUpdate->$index) true
             :log info ($logPrefix . "INFO - " . $hostname . " needs update: " . \
-                ($dnsIps->$index) . " -> " . $publicIp)
+                ($dnsIps->$index) . " -> " . $recordIp)
         }
     }
 }
@@ -546,10 +668,11 @@
 :foreach index,record in=$records do={
     :local provider ($record->"provider")
     :local hostname ($record->"hostname")
+    :local recordIp ($recordIps->$index)
 
     :if (($needsUpdate->$index) = true) do={
         :if ($dryRun) do={
-            :log warning ($logPrefix . "WARNING - dry-run, " . $hostname . " not updated to " . $publicIp)
+            :log warning ($logPrefix . "WARNING - dry-run, " . $hostname . " not updated to " . $recordIp)
         } else={
             :local noipFatal false
             :local duckdnsRejected false
@@ -559,18 +682,18 @@
                     :local response [/tool fetch \
                         url=($cloudflareApiUrl . ($record->"zoneid") . "/dns_records/" . ($recordIds->$index)) \
                         http-method=patch http-header-field=$cloudflareHeaders \
-                        http-data=("{\"content\":\"" . $publicIp . "\"}") \
+                        http-data=("{\"content\":\"" . $recordIp . "\"}") \
                         check-certificate=$checkCertificate output=user as-value]
                     :local responseJson [:deserialize from=json options=json.no-string-conversion \
                         value=($response->"data")]
                     :if (($responseJson->"success") != true) do={
                         :error "Cloudflare answered success=false"
                     }
-                    :log info ($logPrefix . "INFO - " . $hostname . " updated to " . $publicIp)
+                    :log info ($logPrefix . "INFO - " . $hostname . " updated to " . $recordIp)
                 }
                 :if ($provider = "noip") do={
                     :local response [/tool fetch \
-                        url=($noipUpdateUrl . "?hostname=" . $hostname . "&myip=" . $publicIp) \
+                        url=($noipUpdateUrl . "?hostname=" . $hostname . "&myip=" . $recordIp) \
                         http-header-field=("Authorization:" . $noipAuthHeader) \
                         check-certificate=$checkCertificate output=user as-value]
 
@@ -600,14 +723,14 @@
                         :error ("No-IP answered " . $answerLine)
                     }
                     :if ($answerCode = "good") do={
-                        :log info ($logPrefix . "INFO - " . $hostname . " updated to " . $publicIp . \
+                        :log info ($logPrefix . "INFO - " . $hostname . " updated to " . $recordIp . \
                             " (No-IP: " . $answerLine . ")")
                     } else={
-                        :log info ($logPrefix . "INFO - " . $hostname . " already had " . $publicIp . \
+                        :log info ($logPrefix . "INFO - " . $hostname . " already had " . $recordIp . \
                             " (No-IP: " . $answerLine . ")")
                     }
-                    :if ($answerIp != [:tostr $publicIp]) do={
-                        :log warning ($logPrefix . "WARNING - No-IP did not keep " . $publicIp . \
+                    :if ($answerIp != [:tostr $recordIp]) do={
+                        :log warning ($logPrefix . "WARNING - No-IP did not keep " . $recordIp . \
                             " for " . $hostname)
                     }
                 }
@@ -617,7 +740,7 @@
                     :local subdomain [:pick $hostname 0 ([:len $hostname] - [:len $duckdnsSuffix])]
                     :local response [/tool fetch \
                         url=($duckdnsUpdateUrl . "?domains=" . $subdomain . "&token=" . $duckdnsToken . \
-                            "&ip=" . $publicIp . "&verbose=true") \
+                            "&ip=" . $recordIp . "&verbose=true") \
                         check-certificate=$checkCertificate output=user as-value]
 
                     # Verbose answer, one item per line: OK or KO, IPv4, IPv6, UPDATED or NOCHANGE.
@@ -651,14 +774,14 @@
                         :error ("DuckDNS answered " . $answerStatus)
                     }
                     :if ($answerChange = "NOCHANGE") do={
-                        :log info ($logPrefix . "INFO - " . $hostname . " already had " . $publicIp . \
+                        :log info ($logPrefix . "INFO - " . $hostname . " already had " . $recordIp . \
                             " (DuckDNS: OK " . $answerChange . ")")
                     } else={
-                        :log info ($logPrefix . "INFO - " . $hostname . " updated to " . $publicIp . \
+                        :log info ($logPrefix . "INFO - " . $hostname . " updated to " . $recordIp . \
                             " (DuckDNS: OK " . $answerChange . ")")
                     }
-                    :if ($answerIp != [:tostr $publicIp]) do={
-                        :log warning ($logPrefix . "WARNING - DuckDNS did not keep " . $publicIp . \
+                    :if ($answerIp != [:tostr $recordIp]) do={
+                        :log warning ($logPrefix . "WARNING - DuckDNS did not keep " . $recordIp . \
                             " for " . $hostname)
                     }
                 }
