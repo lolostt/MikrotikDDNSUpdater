@@ -142,7 +142,7 @@
 :local usesDuckdns false
 :local duckdnsNameServerIp ""
 :local publicIp ""
-# Per-record state, indexed like $records. [:toarray ""] is the documented empty array.
+# Per-record state, indexed like $records.
 :local recordIds [:toarray ""]
 :local recordInterfaces [:toarray ""]
 :local recordIps [:toarray ""]
