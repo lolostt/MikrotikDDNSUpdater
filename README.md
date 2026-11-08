@@ -24,7 +24,6 @@ Whatever the method, the "User configuration" block at the top of the script has
     /system script add name=MikrotikDDNSUpdater policy=read,test source=[/file get MikrotikDDNSUpdater.rsc contents]
     /file remove MikrotikDDNSUpdater.rsc
     ```
-    The script is created with its placeholder values, so no credentials reach the log.
 2. In Winbox or WebFig, go to System > Scripts, open `MikrotikDDNSUpdater` and fill the "User configuration" block in its source.
 3. Go on with [First run and scheduling](#first-run-and-scheduling).
 
@@ -44,7 +43,7 @@ Whatever the method, the "User configuration" block at the top of the script has
 
 To update to a newer build, keep a copy of your "User configuration" block, replace the source of the existing script with the new file and paste your block back. The script name and the scheduler entry stay the same.
 
-> **Security note:** if you add or change the script from the terminal (`/system script add ... source=...`) once your credentials are in it, RouterOS writes the whole source, credentials included, to the system log. Fill the credentials in Winbox or WebFig instead, and take extra care if the log is sent to a remote syslog server. The DuckDNS API only accepts the token in the URL; the script never writes it to the log.
+> **Security note:** whenever the script is added or edited, from the terminal, Winbox or WebFig, RouterOS writes its whole source, credentials included, to the system log. Take extra care if the log is sent to a remote syslog server.
 
 ## Usage
 You can run the script manually using Winbox or WebFig under System > Scripts section. Don't forget proper permissions.
