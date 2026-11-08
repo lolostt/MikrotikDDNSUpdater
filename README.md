@@ -12,14 +12,39 @@ A RouterOS script that keeps DuckDNS, No-IP and/or Cloudflare DNS records pointi
 - **Cloudflare:** an API token with *Zone > DNS > Edit* permission, and the Zone ID of each domain (domain *Overview* page, *API* section). The A record must already exist.
 
 ### Installing
-1. Download, clone or copy `MikrotikDDNSUpdater.rsc` on your local computer.
-2. Fill the "User configuration" block (see below).
-3. Place the script in the Mikrotik device under System > Scripts using Winbox or WebFig.
-4. Give it "read" and "test" permissions. They are the only ones it needs.
-5. Run it once with `dryRun` set to `true` and check the log.
-6. Set `dryRun` to `false` and automate execution using RouterOS scheduler. See below.
+Whatever the method, the "User configuration" block at the top of the script has to be filled (see [Configuration](#configuration)):
+- In `records`, replace the example entries with your own and remove the ones for providers you do not use.
+- Fill the credentials of the providers you use. The others can keep their placeholder values.
+- Leave `dryRun` set to `true` for now.
 
-> **Security note:** if you add the script from the terminal (`/system script add ... source=...`), RouterOS writes the whole source, credentials included, to the system log. Paste it in Winbox or WebFig instead, and take extra care if the log is sent to a remote syslog server. The DuckDNS API only accepts the token in the URL; the script never writes it to the log.
+#### Method 1: from the terminal
+1. Open a terminal on the router and run:
+    ```
+    /tool fetch url="https://raw.githubusercontent.com/lolostt/MikrotikDDNSUpdater/main/MikrotikDDNSUpdater.rsc" dst-path=MikrotikDDNSUpdater.rsc check-certificate=yes-without-crl
+    /system script add name=MikrotikDDNSUpdater policy=read,test source=[/file get MikrotikDDNSUpdater.rsc contents]
+    /file remove MikrotikDDNSUpdater.rsc
+    ```
+    The script is created with its placeholder values, so no credentials reach the log.
+2. In Winbox or WebFig, go to System > Scripts, open `MikrotikDDNSUpdater` and fill the "User configuration" block in its source.
+3. Go on with [First run and scheduling](#first-run-and-scheduling).
+
+#### Method 2: from Winbox or WebFig
+1. Download `MikrotikDDNSUpdater.rsc`, open it in a text editor and fill the "User configuration" block.
+2. In Winbox or WebFig, go to System > Scripts and add a new script:
+    - **Name:** `MikrotikDDNSUpdater`. The terminal and scheduler commands in this README use this name.
+    - **Policy:** tick only `read` and `test`. They are the only ones the script needs.
+    - **Don't Require Permissions:** leave it unticked.
+    - **Source:** paste the whole content of the edited file.
+3. Go on with [First run and scheduling](#first-run-and-scheduling).
+
+#### First run and scheduling
+1. Click *Run Script* and check the messages starting with `MikrotikDDNSUpdater:` under Log. With `dryRun` set to `true`, nothing is changed: the log shows the public IP address and, for each record, its current address and whether it needs an update. The dry-run `WARNING` lines are expected; fix any `ERROR` before going on.
+2. Set `dryRun` to `false` in the script source and run it again. The log now shows, for each record, whether it was updated or was already up to date.
+3. Schedule it to run automatically (see [Automation](#automation)).
+
+To update to a newer build, keep a copy of your "User configuration" block, replace the source of the existing script with the new file and paste your block back. The script name and the scheduler entry stay the same.
+
+> **Security note:** if you add or change the script from the terminal (`/system script add ... source=...`) once your credentials are in it, RouterOS writes the whole source, credentials included, to the system log. Fill the credentials in Winbox or WebFig instead, and take extra care if the log is sent to a remote syslog server. The DuckDNS API only accepts the token in the URL; the script never writes it to the log.
 
 ## Usage
 You can run the script manually using Winbox or WebFig under System > Scripts section. Don't forget proper permissions.
