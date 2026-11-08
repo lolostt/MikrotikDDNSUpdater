@@ -1,5 +1,5 @@
 # MikrotikDDNSUpdater
-A RouterOS script that keeps Cloudflare, No-IP and/or DuckDNS DNS records pointing to the router's current public IPv4 address.
+A RouterOS script that keeps DuckDNS, No-IP and/or Cloudflare DNS records pointing to the router's current public IPv4 address.
 
 ## Getting Started
 ### Prerequisites
@@ -7,9 +7,9 @@ A RouterOS script that keeps Cloudflare, No-IP and/or DuckDNS DNS records pointi
 - Mikrotik device running RouterOS 7.23.4 or newer. Older versions (including RouterOS 6) are not supported.
 
 #### Accounts
-- **Cloudflare:** an API token with *Zone > DNS > Edit* permission, and the Zone ID of each domain (domain *Overview* page, *API* section). The A record must already exist.
-- **No-IP:** the account email and password. The hostname must already exist in the account.
 - **DuckDNS:** the account token, shown on the duckdns.org main page after signing in. The subdomain must already exist in the account.
+- **No-IP:** the account email and password. The hostname must already exist in the account.
+- **Cloudflare:** an API token with *Zone > DNS > Edit* permission, and the Zone ID of each domain (domain *Overview* page, *API* section). The A record must already exist.
 
 ### Installing
 1. Download, clone or copy `MikrotikDDNSUpdater.rsc` on your local computer.
@@ -36,14 +36,14 @@ You can also run it from terminal:
 - **records** (array): DNS records to keep updated, one entry per hostname. There can be one or several records per provider, and providers can be mixed. The hostname is always the full name, also for DuckDNS (`home.duckdns.org`, not `home`). Field names and hostnames must be lowercase (RouterOS reads an unquoted key with capitals, such as `zoneId=`, as a comparison).
     ```
     :local records {
-        {provider="cloudflare"; hostname="home.example.com"; zoneid="<zone ID>"};
+        {provider="duckdns"; hostname="home.duckdns.org"};
         {provider="noip"; hostname="home.ddns.net"};
-        {provider="duckdns"; hostname="home.duckdns.org"}
+        {provider="cloudflare"; hostname="home.example.com"; zoneid="<zone ID>"}
     }
     ```
+- **duckdnsToken** (string): DuckDNS account token (`xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`). Only needed for DuckDNS records.
 - **noipUsername** / **noipPassword** (string): No-IP account. Only needed for No-IP records.
 - **cloudflareApiToken** (string): Cloudflare API token. Only needed for Cloudflare records.
-- **duckdnsToken** (string): DuckDNS account token (`xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`). Only needed for DuckDNS records.
 - **dryRun** (boolean): `true` checks everything but does not change any DNS record. Enabled by default.
 - **publicIpService** (string) selects the method for determining the current public IP address:
     - `auto` (default) tries every service in order until one answers: icanhazip, ipify, Amazon, ipinfo and Mikrotik.

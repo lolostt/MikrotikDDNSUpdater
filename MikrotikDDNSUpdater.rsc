@@ -5,7 +5,7 @@
 # https://github.com/lolostt/MikrotikDDNSUpdater
 # Copyright (C) 2026 Sleeping Coconut https://sleepingcoconut.com
 #
-# Updates Cloudflare, No-IP and/or DuckDNS DNS records with the router's current public IPv4 address.
+# Updates DuckDNS, No-IP and/or Cloudflare DNS records with the router's current public IPv4 address.
 # Requires RouterOS 7.23.4 or newer.
 #
 # Usage:
@@ -20,27 +20,31 @@
 # ============================================================================
 
 # DNS records to keep updated. Field names and hostnames must be lowercase.
-#   Cloudflare: {provider="cloudflare"; hostname="home.example.com"; zoneid="<zone ID>"}
-#   No-IP:      {provider="noip"; hostname="home.ddns.net"}
 #   DuckDNS:    {provider="duckdns"; hostname="home.duckdns.org"}
+#   No-IP:      {provider="noip"; hostname="home.ddns.net"}
+#   Cloudflare: {provider="cloudflare"; hostname="home.example.com"; zoneid="<zone ID>"}
+
 :local records {
-    {provider="cloudflare"; hostname="SUBDOMAIN.DOMAIN.COM"; zoneid="CLOUDFLARE_ZONE_ID"};
-    {provider="noip"; hostname="SUBDOMAIN.DOMAIN.COM"}
+    {provider="duckdns"; hostname="SUBDOMAIN.DOMAIN.COM"};
+    {provider="noip"; hostname="SUBDOMAIN.DOMAIN.COM"};
+    {provider="cloudflare"; hostname="SUBDOMAIN.DOMAIN.COM"; zoneid="CLOUDFLARE_ZONE_ID"}
 }
+
+# ----- DuckDNS
+
+# DuckDNS account token, shown on duckdns.org after signing in. Only needed for DuckDNS records.
+:local duckdnsToken "DUCKDNS_TOKEN"
+
+# ----- No-IP
 
 # No-IP account. The username can be the account email. Only needed for No-IP records.
 :local noipUsername "USER@DOMAIN.COM"
 :local noipPassword "PASSWORD"
 
-# ----------------------------------------------------------------------------
+# ----- Cloudflare
 
 # Cloudflare API token with Zone > DNS > Edit permission. Only needed for Cloudflare records.
 :local cloudflareApiToken "CLOUDFLARE_API_TOKEN"
-
-# ----------------------------------------------------------------------------
-
-# DuckDNS account token, shown on duckdns.org after signing in. Only needed for DuckDNS records.
-:local duckdnsToken "DUCKDNS_TOKEN"
 
 # ----------------------------------------------------------------------------
 
