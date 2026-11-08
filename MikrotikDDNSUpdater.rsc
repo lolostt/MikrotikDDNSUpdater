@@ -101,7 +101,6 @@
 :local cgnatNetwork 100.64.0.0
 :local cgnatNetmask 255.192.0.0
 
-# Cloudflare API.
 :local cloudflareApiUrl "https://api.cloudflare.com/client/v4/zones/"
 
 # No-IP update API and authoritative name server (avoids stale cached answers).
@@ -319,7 +318,7 @@
         :log error ($logPrefix . "ERROR - Cloudflare API token contains spaces or commas")
         :error ($logPrefix . "invalid Cloudflare API token")
     }
-    # Documented http-header-field format: "name:value,name:value".
+    # http-header-field format: "name:value,name:value".
     :set cloudflareHeaders ("Authorization:Bearer " . $cloudflareApiToken . \
         ",Content-Type:application/json")
 }
@@ -420,7 +419,7 @@
             :if ($formatOk) do={
                 :local octetCount 0
                 :local octetText ""
-                # One extra step past the end closes the last octet.
+                # Loop one step past the end, read as ".", to close the last octet.
                 :for charIndex from=0 to=[:len $answer] do={
                     :local currentChar "."
                     :if ($charIndex < [:len $answer]) do={
@@ -633,7 +632,7 @@
             :set failedCount ($failedCount + 1)
         }
         :log error ($logPrefix . "ERROR - cannot read " . $hostname . ": " . $readError)
-        # Cloudflare answers 401/403 without the header fetch expects, so the error text is cryptic.
+        # fetch reports Cloudflare 401/403 with a cryptic message: add a clearer hint.
         :if (($provider = "cloudflare") && (([:typeof [:find $readError "401"]] = "num") || \
             ([:typeof [:find $readError "403"]] = "num"))) do={
             :log error ($logPrefix . "ERROR - check that the Cloudflare API token is valid" . \
@@ -747,7 +746,7 @@
                     :local answer [:tostr ($response->"data")]
                     :local answerLines [:toarray ""]
                     :local lineText ""
-                    # One extra step past the end closes the last line.
+                    # Loop one step past the end, read as a line break, to close the last line.
                     :for charIndex from=0 to=[:len $answer] do={
                         :local currentChar "\n"
                         :if ($charIndex < [:len $answer]) do={
@@ -799,7 +798,7 @@
                     }
                 }
                 :log error ($logPrefix . "ERROR - cannot update " . $hostname . ": " . $errorText)
-                # Authentication errors come back as HTTP 401/403 before any answer can be read.
+                # 401/403 make fetch fail before any answer can be read: add a provider hint.
                 :local authError (([:typeof [:find $updateError "401"]] = "num") || \
                     ([:typeof [:find $updateError "403"]] = "num"))
                 :if (($provider = "cloudflare") && $authError) do={
