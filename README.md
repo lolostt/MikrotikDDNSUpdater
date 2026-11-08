@@ -123,4 +123,4 @@ To set and forget the script, run it with the RouterOS scheduler under System > 
 * **lolost** - [sleepingcoconut.com](https://sleepingcoconut.com/)
 
 ## License
-This project is licensed under the [Zero Clause BSD license](https://opensource.org/licenses/0BSD).
+This project is licensed under the [MIT License](LICENSE).

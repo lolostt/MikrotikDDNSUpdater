@@ -4,6 +4,7 @@
 #
 # https://github.com/lolostt/MikrotikDDNSUpdater
 # Copyright (C) 2026 Sleeping Coconut https://sleepingcoconut.com
+# Licensed under the MIT License.
 #
 # Updates DuckDNS, No-IP and/or Cloudflare DNS records with the router's current public IPv4 address.
 # Requires RouterOS 7.23.4 or newer.
