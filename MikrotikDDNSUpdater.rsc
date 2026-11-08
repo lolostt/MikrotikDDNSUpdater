@@ -586,57 +586,58 @@
     :local provider ($record->"provider")
     :local hostname ($record->"hostname")
 
-    :onerror readError in={
-        :if ($provider = "cloudflare") do={
-            # Look the A record up by name so its ID does not need to be configured.
-            :local response [/tool fetch \
-                url=($cloudflareApiUrl . ($record->"zoneid") . "/dns_records?type=A&name=" . $hostname) \
-                http-method=get http-header-field=$cloudflareHeaders \
-                check-certificate=$checkCertificate output=user as-value]
-            # Keep JSON strings as strings; record IDs must not be turned into numbers.
-            :local responseJson [:deserialize from=json options=json.no-string-conversion \
-                value=($response->"data")]
-            :if (($responseJson->"success") != true) do={
-                :error "Cloudflare answered success=false"
+    # Records already skipped for lack of a public IP are not looked up.
+    :if (($recordFailed->$index) = false) do={
+        :onerror readError in={
+            :if ($provider = "cloudflare") do={
+                # Look the A record up by name so its ID does not need to be configured.
+                :local response [/tool fetch \
+                    url=($cloudflareApiUrl . ($record->"zoneid") . "/dns_records?type=A&name=" . $hostname) \
+                    http-method=get http-header-field=$cloudflareHeaders \
+                    check-certificate=$checkCertificate output=user as-value]
+                # Keep JSON strings as strings; record IDs must not be turned into numbers.
+                :local responseJson [:deserialize from=json options=json.no-string-conversion \
+                    value=($response->"data")]
+                :if (($responseJson->"success") != true) do={
+                    :error "Cloudflare answered success=false"
+                }
+                :local matches ($responseJson->"result")
+                :if ([:len $matches] = 0) do={
+                    :error "no A record with this name in the zone"
+                }
+                :if ([:len $matches] > 1) do={
+                    :error "more than one A record with this name"
+                }
+                :set ($recordIds->$index) [:tostr (($matches->0)->"id")]
+                :set ($dnsIps->$index) [:toip (($matches->0)->"content")]
             }
-            :local matches ($responseJson->"result")
-            :if ([:len $matches] = 0) do={
-                :error "no A record with this name in the zone"
+            :if (($provider = "noip") || ($provider = "duckdns")) do={
+                :local nameServerIp $noipNameServerIp
+                :if ($provider = "duckdns") do={
+                    :set nameServerIp $duckdnsNameServerIp
+                }
+                :if ([:typeof $nameServerIp] = "ip") do={
+                    :set ($dnsIps->$index) [:resolve domain-name=$hostname \
+                        server=$nameServerIp type=ipv4]
+                } else={
+                    :set ($dnsIps->$index) [:resolve domain-name=$hostname type=ipv4]
+                }
             }
-            :if ([:len $matches] > 1) do={
-                :error "more than one A record with this name"
-            }
-            :set ($recordIds->$index) [:tostr (($matches->0)->"id")]
-            :set ($dnsIps->$index) [:toip (($matches->0)->"content")]
-        }
-        :if (($provider = "noip") || ($provider = "duckdns")) do={
-            :local nameServerIp $noipNameServerIp
-            :if ($provider = "duckdns") do={
-                :set nameServerIp $duckdnsNameServerIp
-            }
-            :if ([:typeof $nameServerIp] = "ip") do={
-                :set ($dnsIps->$index) [:resolve domain-name=$hostname \
-                    server=$nameServerIp type=ipv4]
-            } else={
-                :set ($dnsIps->$index) [:resolve domain-name=$hostname type=ipv4]
-            }
-        }
 
-        :if ([:typeof ($dnsIps->$index)] != "ip") do={
-            :error "the record does not hold an IPv4 address"
-        }
-        :log info ($logPrefix . "INFO - " . $hostname . " points to " . ($dnsIps->$index))
-    } do={
-        :if (($recordFailed->$index) = false) do={
+            :if ([:typeof ($dnsIps->$index)] != "ip") do={
+                :error "the record does not hold an IPv4 address"
+            }
+            :log info ($logPrefix . "INFO - " . $hostname . " points to " . ($dnsIps->$index))
+        } do={
             :set ($recordFailed->$index) true
             :set failedCount ($failedCount + 1)
-        }
-        :log error ($logPrefix . "ERROR - cannot read " . $hostname . ": " . $readError)
-        # fetch reports Cloudflare 401/403 with a cryptic message: add a clearer hint.
-        :if (($provider = "cloudflare") && (([:typeof [:find $readError "401"]] = "num") || \
-            ([:typeof [:find $readError "403"]] = "num"))) do={
-            :log error ($logPrefix . "ERROR - check that the Cloudflare API token is valid" . \
-                " and can read DNS records of the zone of " . $hostname)
+            :log error ($logPrefix . "ERROR - cannot read " . $hostname . ": " . $readError)
+            # fetch reports Cloudflare 401/403 with a cryptic message: add a clearer hint.
+            :if (($provider = "cloudflare") && (([:typeof [:find $readError "401"]] = "num") || \
+                ([:typeof [:find $readError "403"]] = "num"))) do={
+                :log error ($logPrefix . "ERROR - check that the Cloudflare API token is valid" . \
+                    " and can read DNS records of the zone of " . $hostname)
+            }
         }
     }
 }
