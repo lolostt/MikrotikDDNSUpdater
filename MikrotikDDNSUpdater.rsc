@@ -101,6 +101,10 @@
 :local cgnatNetwork 100.64.0.0
 :local cgnatNetmask 255.192.0.0
 
+# Link-local range: the interface got no address from the ISP (e.g. no DHCP answer).
+:local linkLocalNetwork 169.254.0.0
+:local linkLocalNetmask 255.255.0.0
+
 :local cloudflareApiUrl "https://api.cloudflare.com/client/v4/zones/"
 
 # No-IP update API and authoritative name server (avoids stale cached answers).
@@ -541,9 +545,14 @@
                             $interfaceIp . ", a CGNAT address: the ISP shares the public IP and" . \
                             " the router cannot be reached from the Internet")
                     } else={
-                        :log error ($logPrefix . "ERROR - " . $interfaceName . " has the private" . \
-                            " address " . $interfaceIp . ": the router is behind another NAT" . \
-                            " device, use publicIpService auto")
+                        :if (($interfaceIp & $linkLocalNetmask) = $linkLocalNetwork) do={
+                            :log error ($logPrefix . "ERROR - " . $interfaceName . " has the link-local" . \
+                                " address " . $interfaceIp . ": it got no address from the ISP")
+                        } else={
+                            :log error ($logPrefix . "ERROR - " . $interfaceName . " has the private" . \
+                                " address " . $interfaceIp . ": the router is behind another NAT" . \
+                                " device, use publicIpService auto")
+                        }
                     }
                     :set interfaceIp ""
                 }
