@@ -1,6 +1,6 @@
 #!rsc by RouterOS
 # MikrotikDDNSUpdater
-# Build: 13
+# Build: 14
 #
 # https://github.com/lolostt/MikrotikDDNSUpdater
 # Copyright (C) 2026 Sleeping Coconut https://sleepingcoconut.com
