@@ -1,8 +1,8 @@
 #!rsc by RouterOS
-# MikrotikDDNSUpdater
+# MikroTikDDNSUpdater
 # Build: 15
 #
-# https://github.com/lolostt/MikrotikDDNSUpdater
+# https://github.com/lolostt/MikroTikDDNSUpdater
 # Copyright (C) 2026 Sleeping Coconut https://sleepingcoconut.com
 # Licensed under the MIT License.
 #
@@ -74,7 +74,7 @@
 # Hardcoded values
 # ============================================================================
 
-:local logPrefix "MikrotikDDNSUpdater: "
+:local logPrefix "MikroTikDDNSUpdater: "
 
 # Public IP services, in the order used by "auto". All of them return IPv4 only.
 :local publicIpServiceOrder {"icanhazip"; "ipify"; "amazon"; "ipinfo"; "mikrotik"}

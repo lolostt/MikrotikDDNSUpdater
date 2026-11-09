@@ -1,10 +1,10 @@
-# MikrotikDDNSUpdater
+# MikroTikDDNSUpdater
 A RouterOS script that keeps DuckDNS, No-IP and/or Cloudflare DNS records pointing to the router's current public IPv4 address.
 
 ## Getting Started
 ### Prerequisites
 #### Requirements
-- Mikrotik device running RouterOS 7.23.4 or newer. Older versions (including RouterOS 6) are not supported.
+- MikroTik device running RouterOS 7.23.4 or newer. Older versions (including RouterOS 6) are not supported.
 
 #### Accounts
 - **DuckDNS:** the account token, shown on the duckdns.org main page after signing in. The subdomain must already exist in the account.
@@ -20,24 +20,24 @@ Whatever the method, the "User configuration" block at the top of the script has
 #### Method 1: from the terminal
 1. Open a terminal on the router and run:
     ```
-    /tool fetch url="https://raw.githubusercontent.com/lolostt/MikrotikDDNSUpdater/main/MikrotikDDNSUpdater.rsc" dst-path=MikrotikDDNSUpdater.rsc check-certificate=yes-without-crl
-    /system script add name=MikrotikDDNSUpdater policy=read,test source=[/file get MikrotikDDNSUpdater.rsc contents]
-    /file remove MikrotikDDNSUpdater.rsc
+    /tool fetch url="https://raw.githubusercontent.com/lolostt/MikroTikDDNSUpdater/main/MikroTikDDNSUpdater.rsc" dst-path=MikroTikDDNSUpdater.rsc check-certificate=yes-without-crl
+    /system script add name=MikroTikDDNSUpdater policy=read,test source=[/file get MikroTikDDNSUpdater.rsc contents]
+    /file remove MikroTikDDNSUpdater.rsc
     ```
-2. In Winbox or WebFig, go to System > Scripts, open `MikrotikDDNSUpdater` and fill the "User configuration" block in its source.
+2. In Winbox or WebFig, go to System > Scripts, open `MikroTikDDNSUpdater` and fill the "User configuration" block in its source.
 3. Go on with [First run and scheduling](#first-run-and-scheduling).
 
 #### Method 2: from Winbox or WebFig
-1. Download `MikrotikDDNSUpdater.rsc`, open it in a text editor and fill the "User configuration" block.
+1. Download `MikroTikDDNSUpdater.rsc`, open it in a text editor and fill the "User configuration" block.
 2. In Winbox or WebFig, go to System > Scripts and add a new script:
-    - **Name:** `MikrotikDDNSUpdater`. The terminal and scheduler commands in this README use this name.
+    - **Name:** `MikroTikDDNSUpdater`. The terminal and scheduler commands in this README use this name.
     - **Policy:** tick only `read` and `test`. They are the only ones the script needs.
     - **Don't Require Permissions:** leave it unticked.
     - **Source:** paste the whole content of the edited file.
 3. Go on with [First run and scheduling](#first-run-and-scheduling).
 
 #### First run and scheduling
-1. Click *Run Script* and check the messages starting with `MikrotikDDNSUpdater:` under Log. With `dryRun` set to `true`, nothing is changed: the log shows the public IP address and, for each record, its current address and whether it needs an update. The dry-run `WARNING` lines are expected; fix any `ERROR` before going on.
+1. Click *Run Script* and check the messages starting with `MikroTikDDNSUpdater:` under Log. With `dryRun` set to `true`, nothing is changed: the log shows the public IP address and, for each record, its current address and whether it needs an update. The dry-run `WARNING` lines are expected; fix any `ERROR` before going on.
 2. Set `dryRun` to `false` in the script source and run it again. The log now shows, for each record, whether it was updated or was already up to date.
 3. Schedule it to run automatically (see [Automation](#automation)).
 
@@ -53,7 +53,7 @@ You can run the script manually using Winbox or WebFig under System > Scripts se
 
 You can also run it from terminal:
 ```
-/system script run MikrotikDDNSUpdater
+/system script run MikroTikDDNSUpdater
 ```
 
 ### Configuration
@@ -70,7 +70,7 @@ You can also run it from terminal:
 - **cloudflareApiToken** (string): Cloudflare API token. Only needed for Cloudflare records.
 - **dryRun** (boolean): `true` checks everything but does not change any DNS record. Enabled by default.
 - **publicIpService** (string) selects the method for determining the current public IP address:
-    - `auto` (default) tries every service in order until one answers: icanhazip, ipify, Amazon, ipinfo and Mikrotik.
+    - `auto` (default) tries every service in order until one answers: icanhazip, ipify, Amazon, ipinfo and MikroTik.
     - `icanhazip`, `ipify`, `amazon`, `ipinfo` or `mikrotik` uses only that service. `mikrotik` reads IP > Cloud and only works if IP Cloud DDNS is already enabled.
     - `interface` reads the IPv4 address of a router interface instead of asking an external service (see [Interface mode](#interface-mode-multi-wan-and-cgnat)).
 - **wanInterface** (string): only used with `publicIpService` set to `interface`. The interface that holds the public IPv4 address, such as `pppoe-out1`. With PPPoE, set the name of the PPPoE interface (e.g. `pppoe-out1`), not the Ethernet port it runs on (e.g. `ether1`). Records with their own `interface` field do not use it, so it can keep its placeholder value `WAN_INTERFACE` if every record has one.
@@ -93,7 +93,7 @@ Setting `publicIpService` to `interface` makes the script read the public IP fro
 Use the name of the interface that holds the address (IP > Addresses). With PPPoE, that is the PPPoE interface (e.g. `pppoe-out1`), not the Ethernet port or VLAN it runs on; if the Ethernet port or VLAN is set by mistake, the log names the PPPoE client to use instead. Without PPPoE, use the Ethernet port, bridge or VLAN that holds the address. The `interface` field is only accepted in this mode.
 
 ### Script behaviour
-Script uses system log to show execution results and errors. Every message starts with `MikrotikDDNSUpdater:` followed by `INFO -`, `WARNING -` or `ERROR -`. If anything fails, the script ends with an error, so failures are never silent.
+Script uses system log to show execution results and errors. Every message starts with `MikroTikDDNSUpdater:` followed by `INFO -`, `WARNING -` or `ERROR -`. If anything fails, the script ends with an error, so failures are never silent.
 
 Script has 5 stages:
 1. Configuration validation. Credentials are only required for the providers in use.
@@ -114,7 +114,7 @@ Each run takes about one second and writes about 3 lines to the log, plus 2 per 
 To set and forget the script, run it with the RouterOS scheduler under System > Scheduler. The scheduler entry needs the same "read" and "test" permissions. Running it every 15 minutes is recommended: it stays far below Cloudflare API limits and No-IP and DuckDNS only receive a request when the IP changes.
 
 ```
-/system scheduler add name=MikrotikDDNSUpdater interval=15m policy=read,test on-event="/system script run MikrotikDDNSUpdater"
+/system scheduler add name=MikroTikDDNSUpdater interval=15m policy=read,test on-event="/system script run MikroTikDDNSUpdater"
 ```
 
 <img width="545" height="733" alt="Scheduler entry" src="https://github.com/user-attachments/assets/54f66100-b7f9-494d-80c7-565a19202f5d" />
