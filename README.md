@@ -84,19 +84,24 @@ You can also run it from terminal:
 
 ### Interface mode (multi-WAN and CGNAT)
 Setting `publicIpService` to `interface` makes the script read the public IP from a router interface instead of asking an external service. It is meant for routers whose WAN interface holds the public IPv4 address itself (PPPoE, or DHCP from an ONT in bridge mode):
-- **Multi-WAN:** each record follows the interface you choose, not whichever WAN the default route uses at that moment. `wanInterface` is used by every record, and a record can follow another WAN by adding an `interface` field:
+- **Multi-WAN:** with two or more WANs, different records can take their IP from different interfaces. Each record follows a fixed interface, not whichever WAN the default route uses at that moment:
+    - `wanInterface` sets the interface for every record that does not say otherwise.
+    - A record that must follow another WAN gets an `interface` field inside its own entry in `records`, next to `provider` and `hostname`.
+    - The `interface` field only works with `publicIpService` set to `interface`. In any other mode, a record with it is reported as an error.
+
+    Example with two WANs: `home.duckdns.org` takes the IP of `pppoe-out1` (from `wanInterface`, as it has no `interface` field), and `office.ddns.net` takes the IP of `ether2`:
     ```
     :local records {
-        {provider="duckdns"; hostname="SUBDOMAIN.DOMAIN.COM"};
-        {provider="noip"; hostname="SUBDOMAIN.DOMAIN.COM"};
-        {provider="cloudflare"; hostname="SUBDOMAIN.DOMAIN.COM"; zoneid="CLOUDFLARE_ZONE_ID"; interface="ether2"}
+        {provider="duckdns"; hostname="home.duckdns.org"};
+        {provider="noip"; hostname="office.ddns.net"; interface="ether2"}
     }
     :local publicIpService "interface"
     :local wanInterface "pppoe-out1"
     ```
+    If every record has its own `interface` field, `wanInterface` is not used and can keep its placeholder value `WAN_INTERFACE`.
 - **CGNAT and double NAT detection:** if the interface has a CGNAT address (`100.64.0.0/10`), the log says the ISP shares the public IP and the router cannot be reached from the Internet. If it has a private address, the router is behind another NAT device and `publicIpService` must stay `auto`. A link-local address (`169.254.0.0/16`) means the interface got no address from the ISP. In all these cases the records on that interface are not updated and the script ends with an error.
 
-Use the name of the interface that holds the address (IP > Addresses). With PPPoE, that is the PPPoE interface (e.g. `pppoe-out1`), not the Ethernet port or VLAN it runs on; if the Ethernet port or VLAN is set by mistake, the log names the PPPoE client to use instead. Without PPPoE, use the Ethernet port, bridge or VLAN that holds the address. The `interface` field is only accepted in this mode.
+Use the name of the interface that holds the address (IP > Addresses). With PPPoE, that is the PPPoE interface (e.g. `pppoe-out1`), not the Ethernet port or VLAN it runs on; if the Ethernet port or VLAN is set by mistake, the log names the PPPoE client to use instead. Without PPPoE, use the Ethernet port, bridge or VLAN that holds the address. This applies to `wanInterface` and to the `interface` field alike.
 
 ### Script behaviour
 Script uses system log to show execution results and errors. Every message starts with `MikroTikDDNSUpdater:` followed by `INFO -`, `WARNING -` or `ERROR -`. If anything fails, the script ends with an error, so failures are never silent.

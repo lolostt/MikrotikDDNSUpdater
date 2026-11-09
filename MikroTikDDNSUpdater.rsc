@@ -26,8 +26,12 @@
 #   Dynu:       {provider="dynu"; hostname="home.dynu.net"}
 #   FreeDNS:    {provider="freedns"; hostname="home.mooo.com"; token="<update token>"}
 #   Cloudflare: {provider="cloudflare"; hostname="home.example.com"; zoneid="<zone ID>"}
-# Only with publicIpService "interface", any record can follow another WAN by adding
-# interface="<name>", e.g. {provider="noip"; hostname="home2.ddns.net"; interface="ether2"}
+#
+# Multi-WAN (only with publicIpService "interface"): every record takes the IP of wanInterface.
+# To make one record follow another WAN, add interface="<name>" inside that record's own entry,
+# next to provider and hostname:
+#   {provider="noip"; hostname="office.ddns.net"; interface="ether2"}
+# With any other publicIpService, a record with an interface field is an error.
 
 :local records {
     {provider="duckdns"; hostname="SUBDOMAIN.DOMAIN.COM"};
@@ -74,13 +78,14 @@
 # "auto" tries every public IP service in order until one answers.
 # Set "icanhazip", "ipify", "amazon", "ipinfo" or "mikrotik" to use only that service.
 # "mikrotik" reads /ip cloud and only works if IP Cloud DDNS is already enabled.
-# "interface" reads the IPv4 address of a router interface instead (see wanInterface).
+# "interface" reads the IPv4 address of router interfaces instead: wanInterface for every
+# record, or the interface field of a record that has one (see records above).
 :local publicIpService "auto"
 
 # Only for publicIpService "interface": the interface that holds the public IPv4 address,
-# e.g. "pppoe-out1". With PPPoE, use the PPPoE interface, not the Ethernet port under it.
-# Records with their own interface field do not use it. A private or CGNAT address on the
-# interface is reported as an error.
+# e.g. "pppoe-out1". Every record without its own interface field uses it; if all records
+# have one, it can keep its placeholder. With PPPoE, use the PPPoE interface, not the
+# Ethernet port under it. A private or CGNAT address on the interface is reported as an error.
 :local wanInterface "WAN_INTERFACE"
 
 # TLS certificate check for HTTPS requests: "yes", "yes-without-crl" or "no".
