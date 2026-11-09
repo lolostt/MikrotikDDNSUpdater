@@ -1,5 +1,5 @@
 # MikroTikDDNSUpdater
-A RouterOS script that keeps DuckDNS, No-IP and/or Cloudflare DNS records pointing to the router's current public IPv4 address.
+A RouterOS script that keeps DuckDNS, No-IP, Dynu, FreeDNS and/or Cloudflare DNS records pointing to the router's current public IPv4 address.
 
 ## Getting Started
 ### Prerequisites
@@ -9,6 +9,8 @@ A RouterOS script that keeps DuckDNS, No-IP and/or Cloudflare DNS records pointi
 #### Accounts
 - **DuckDNS:** the account token, shown on the duckdns.org main page after signing in. The subdomain must already exist in the account.
 - **No-IP:** the account email and password. The hostname must already exist in the account.
+- **Dynu:** the account username and the IP Update Password (*Control Panel > My Account > Username/Password*), or its MD5 or SHA-256 hash. Do not use the account password: the IP Update Password only allows IP updates. The hostname must already exist in the account.
+- **FreeDNS:** the update token of each record: in *Dynamic DNS*, the part after `/u/` in its version 2 update URL (`https://sync.afraid.org/u/<token>/`). The A record must already exist.
 - **Cloudflare:** an API token with *Zone > DNS > Edit* permission, and the Zone ID of each domain (domain *Overview* page, *API* section). The A record must already exist.
 
 ### Installing
@@ -62,11 +64,15 @@ You can also run it from terminal:
     :local records {
         {provider="duckdns"; hostname="SUBDOMAIN.DOMAIN.COM"};
         {provider="noip"; hostname="SUBDOMAIN.DOMAIN.COM"};
+        {provider="dynu"; hostname="SUBDOMAIN.DOMAIN.COM"};
+        {provider="freedns"; hostname="SUBDOMAIN.DOMAIN.COM"; token="FREEDNS_TOKEN"};
         {provider="cloudflare"; hostname="SUBDOMAIN.DOMAIN.COM"; zoneid="CLOUDFLARE_ZONE_ID"}
     }
     ```
+    FreeDNS records carry their own `token` (letters and digits); Cloudflare records carry their `zoneid`.
 - **duckdnsToken** (string): DuckDNS account token (`xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`). Only needed for DuckDNS records.
 - **noipUsername** / **noipPassword** (string): No-IP account. Only needed for No-IP records.
+- **dynuUsername** / **dynuPassword** (string): Dynu account username and IP Update Password (or its MD5 or SHA-256 hash), not the account password. Only needed for Dynu records.
 - **cloudflareApiToken** (string): Cloudflare API token. Only needed for Cloudflare records.
 - **dryRun** (boolean): `true` checks everything but does not change any DNS record. Enabled by default.
 - **publicIpService** (string) selects the method for determining the current public IP address:
@@ -98,20 +104,24 @@ Script uses system log to show execution results and errors. Every message start
 Script has 5 stages:
 1. Configuration validation. Credentials are only required for the providers in use.
 2. Get public IP address, from the external services or, in interface mode, from each record's interface. Only valid public IPv4 addresses are accepted (private, CGNAT, loopback, link-local, multicast and reserved ranges are rejected).
-3. Get the current IP address of each record: through Cloudflare API for Cloudflare, and by asking each provider's own name server for No-IP and DuckDNS.
+3. Get the current IP address of each record: through Cloudflare API for Cloudflare, and by asking each provider's own name server for DuckDNS, No-IP, Dynu and FreeDNS.
 4. IP addresses comparison.
-5. Update of the records that need it. Cloudflare keeps proxy status and TTL. No-IP and DuckDNS are only contacted when the IP has changed.
+5. Update of the records that need it. Cloudflare keeps proxy status and TTL. DuckDNS, No-IP, Dynu and FreeDNS are only contacted when the IP has changed. DuckDNS and FreeDNS tokens never appear in the log.
 
 A record that fails does not stop the others: the remaining records are still processed and the script ends with an error.
 
 If No-IP answers `badauth`, `nohost` or a similar error, fix the account or hostname as soon as possible: No-IP may block clients that keep sending failing updates.
+
+Dynu uses the same answers as No-IP (`good`, `nochg`, `badauth`, `nohost`...) and the same advice applies. If it answers `911`, its servers have a problem: the next scheduled run tries again.
+
+If FreeDNS answers that it could not find any matching DNS records, the token is wrong. With FreeDNS *linked updates* (on by default), updating a record also updates the other records of the account that had the same IP.
 
 If DuckDNS answers `KO`, the token is wrong or the subdomain does not belong to the account. DuckDNS gives no other detail.
 
 Each run takes about one second and writes about 3 lines to the log, plus 2 per record. It does not write to flash storage, unless your logging configuration sends script messages to disk.
 
 ### Automation
-To set and forget the script, run it with the RouterOS scheduler under System > Scheduler. The scheduler entry needs the same "read" and "test" permissions. Running it every 15 minutes is recommended: it stays far below Cloudflare API limits and No-IP and DuckDNS only receive a request when the IP changes.
+To set and forget the script, run it with the RouterOS scheduler under System > Scheduler. The scheduler entry needs the same "read" and "test" permissions. Running it every 15 minutes is recommended: it stays far below Cloudflare API limits and DuckDNS, No-IP, Dynu and FreeDNS only receive a request when the IP changes.
 
 ```
 /system scheduler add name=MikroTikDDNSUpdater interval=15m policy=read,test on-event="/system script run MikroTikDDNSUpdater"
