@@ -73,7 +73,7 @@ You can also run it from terminal:
     - `auto` (default) tries every service in order until one answers: icanhazip, ipify, Amazon, ipinfo and Mikrotik.
     - `icanhazip`, `ipify`, `amazon`, `ipinfo` or `mikrotik` uses only that service. `mikrotik` reads IP > Cloud and only works if IP Cloud DDNS is already enabled.
     - `interface` reads the IPv4 address of a router interface instead of asking an external service (see [Interface mode](#interface-mode-multi-wan-and-cgnat)).
-- **wanInterface** (string): only used with `publicIpService` set to `interface`. The interface that holds the public IPv4 address, such as `pppoe-out1`. Records with their own `interface` field do not use it, so it can keep its placeholder value `WAN_INTERFACE` if every record has one.
+- **wanInterface** (string): only used with `publicIpService` set to `interface`. The interface that holds the public IPv4 address, such as `pppoe-out1`. With PPPoE, set the name of the PPPoE interface (e.g. `pppoe-out1`), not the Ethernet port it runs on (e.g. `ether1`). Records with their own `interface` field do not use it, so it can keep its placeholder value `WAN_INTERFACE` if every record has one.
 - **checkCertificate** (string): TLS certificate check for HTTPS requests, `yes`, `yes-without-crl` (default) or `no`. `no` is not recommended because credentials travel in these requests. RouterOS built-in trust store is enough, no certificates need to be imported.
 
 ### Interface mode (multi-WAN and CGNAT)
@@ -90,7 +90,7 @@ Setting `publicIpService` to `interface` makes the script read the public IP fro
     ```
 - **CGNAT and double NAT detection:** if the interface has a CGNAT address (`100.64.0.0/10`), the log says the ISP shares the public IP and the router cannot be reached from the Internet. If it has a private address, the router is behind another NAT device and `publicIpService` must stay `auto`. A link-local address (`169.254.0.0/16`) means the interface got no address from the ISP. In all these cases the records on that interface are not updated and the script ends with an error.
 
-Use the name of the interface that holds the address (IP > Addresses): `pppoe-out1` rather than the Ethernet port under it, or the bridge or VLAN if the address is set there. The `interface` field is only accepted in this mode.
+Use the name of the interface that holds the address (IP > Addresses). With PPPoE, that is the PPPoE interface (e.g. `pppoe-out1`), not the Ethernet port or VLAN it runs on; if the Ethernet port or VLAN is set by mistake, the log names the PPPoE client to use instead. Without PPPoE, use the Ethernet port, bridge or VLAN that holds the address. The `interface` field is only accepted in this mode.
 
 ### Script behaviour
 Script uses system log to show execution results and errors. Every message starts with `MikrotikDDNSUpdater:` followed by `INFO -`, `WARNING -` or `ERROR -`. If anything fails, the script ends with an error, so failures are never silent.

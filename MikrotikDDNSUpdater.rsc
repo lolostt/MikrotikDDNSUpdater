@@ -61,8 +61,9 @@
 :local publicIpService "auto"
 
 # Only for publicIpService "interface": the interface that holds the public IPv4 address,
-# e.g. "pppoe-out1". Records with their own interface field do not use it. A private or
-# CGNAT address on the interface is reported as an error.
+# e.g. "pppoe-out1". With PPPoE, use the PPPoE interface, not the Ethernet port under it.
+# Records with their own interface field do not use it. A private or CGNAT address on the
+# interface is reported as an error.
 :local wanInterface "WAN_INTERFACE"
 
 # TLS certificate check for HTTPS requests: "yes", "yes-without-crl" or "no".
@@ -530,6 +531,22 @@
                     $interfaceName . ": " . $interfaceError)
             }
 
+            # Active PPPoE clients on this interface, directly or through a VLAN: the public IP
+            # is on the PPPoE interface, so wanInterface (or interface) points to the wrong one.
+            :local pppoeNames ""
+            :local pppoeIds [/interface pppoe-client find where interface=$interfaceName disabled=no]
+            :foreach vlanId in=[/interface vlan find where interface=$interfaceName] do={
+                :local vlanName [/interface vlan get $vlanId name]
+                :set pppoeIds ($pppoeIds, [/interface pppoe-client find where interface=$vlanName \
+                    disabled=no])
+            }
+            :foreach pppoeId in=$pppoeIds do={
+                :if ([:len $pppoeNames] > 0) do={
+                    :set pppoeNames ($pppoeNames . ", ")
+                }
+                :set pppoeNames ($pppoeNames . [/interface pppoe-client get $pppoeId name])
+            }
+
             :if ([:typeof $interfaceIp] = "ip") do={
                 :local isPublic true
                 :foreach range in=$nonPublicRanges do={
@@ -550,13 +567,21 @@
                             :log error ($logPrefix . "ERROR - " . $interfaceName . " has the link-local" . \
                                 " address " . $interfaceIp . ": it got no address from the ISP")
                         } else={
-                            :log error ($logPrefix . "ERROR - " . $interfaceName . " has the private" . \
-                                " address " . $interfaceIp . ": the router is behind another NAT" . \
-                                " device, use publicIpService auto")
+                            # With a PPPoE client on top, the private address is not a sign of NAT.
+                            :if ([:len $pppoeNames] = 0) do={
+                                :log error ($logPrefix . "ERROR - " . $interfaceName . " has the" . \
+                                    " private address " . $interfaceIp . ": the router is behind" . \
+                                    " another NAT device, use publicIpService auto")
+                            }
                         }
                     }
                     :set interfaceIp ""
                 }
+            }
+
+            :if (([:typeof $interfaceIp] != "ip") && ([:len $pppoeNames] > 0)) do={
+                :log error ($logPrefix . "ERROR - " . $interfaceName . " carries the PPPoE client " . \
+                    $pppoeNames . ": set wanInterface (or interface) to " . $pppoeNames)
             }
         }
 
