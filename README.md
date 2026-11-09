@@ -48,7 +48,7 @@ To update to a newer build, keep a copy of your "User configuration" block, repl
 ## Usage
 You can run the script manually using Winbox or WebFig under System > Scripts section.
 
-<img width="871" height="836" alt="Script in Winbox" src="https://github.com/user-attachments/assets/93c77bab-c0d6-4a96-9c75-5edbac7f44ed" />
+<img width="871" height="836" alt="Script in Winbox" src="https://github.com/user-attachments/assets/b6ec597a-7e41-4b09-a06a-3a36b627c1f3" />
 
 
 You can also run it from terminal:
@@ -117,7 +117,7 @@ To set and forget the script, run it with the RouterOS scheduler under System > 
 /system scheduler add name=MikroTikDDNSUpdater interval=15m policy=read,test on-event="/system script run MikroTikDDNSUpdater"
 ```
 
-<img width="545" height="733" alt="Scheduler entry" src="https://github.com/user-attachments/assets/54f66100-b7f9-494d-80c7-565a19202f5d" />
+<img width="545" height="733" alt="Scheduler entry" src="https://github.com/user-attachments/assets/f44379b5-85fb-44c0-9247-9446ded7bd5c" />
 
 ## Authors
 * **lolost** - [sleepingcoconut.com](https://sleepingcoconut.com/)
