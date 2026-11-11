@@ -188,9 +188,81 @@
 # Allowed characters for format checks.
 :local hostnameChars "abcdefghijklmnopqrstuvwxyz0123456789.-"
 :local hexChars "0123456789abcdef"
-:local digitChars "0123456789"
 :local alphanumericChars "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 :local tokenChars ($alphanumericChars . "-_")
+
+# ----- Helper functions
+# A function does not see the caller's variables: everything it needs comes as a parameter.
+
+# true if every character of text is in chars. An empty text is true.
+:local onlyChars do={
+    :local textLength [:len $text]
+    :local charIndex 0
+    :while ($charIndex < $textLength) do={
+        :if ([:typeof [:find $chars [:pick $text $charIndex]]] != "num") do={
+            :return false
+        }
+        :set charIndex ($charIndex + 1)
+    }
+    :return true
+}
+
+# The first line of text, without its line ending.
+:local firstLine do={
+    :local line [:tostr $text]
+    :foreach lineEnd in={"\n"; "\r"} do={
+        :local cutAt [:find $line $lineEnd]
+        :if ([:typeof $cutAt] = "num") do={
+            :set line [:pick $line 0 $cutAt]
+        }
+    }
+    :return $line
+}
+
+# true if address is outside every {network; netmask} pair of ranges.
+:local isPublicIp do={
+    :foreach range in=$ranges do={
+        :if (($address & ($range->1)) = ($range->0)) do={
+            :return false
+        }
+    }
+    :return true
+}
+
+# The IPv4 address written in text, or "" if text is not exactly four dot-separated numbers from
+# 0 to 255: partial values such as "10.1", which :toip would expand, are rejected.
+:local parseIpv4 do={
+    :local textLength [:len $text]
+    :if (($textLength < 7) || ($textLength > 15)) do={
+        :return ""
+    }
+    :local octetCount 0
+    :local octetText ""
+    # Loop one step past the end, read as ".", to close the last octet.
+    :for charIndex from=0 to=$textLength do={
+        :local currentChar "."
+        :if ($charIndex < $textLength) do={
+            :set currentChar [:pick $text $charIndex]
+        }
+        :if ($currentChar = ".") do={
+            :if (([:len $octetText] = 0) || ([:len $octetText] > 3) || \
+                ([:tonum $octetText] > 255)) do={
+                :return ""
+            }
+            :set octetCount ($octetCount + 1)
+            :set octetText ""
+        } else={
+            :if ([:typeof [:find "0123456789" $currentChar]] != "num") do={
+                :return ""
+            }
+            :set octetText ($octetText . $currentChar)
+        }
+    }
+    :if ($octetCount != 4) do={
+        :return ""
+    }
+    :return [:toip $text]
+}
 
 # ============================================================================
 # Runtime variables
@@ -361,11 +433,9 @@
             :log error ($logPrefix . "ERROR - zoneid must have 32 characters for " . $hostname)
             :error ($logPrefix . "invalid zoneid")
         }
-        :for charIndex from=0 to=31 do={
-            :if ([:typeof [:find $hexChars [:pick $zoneId $charIndex]]] != "num") do={
-                :log error ($logPrefix . "ERROR - zoneid must be lowercase hex for " . $hostname)
-                :error ($logPrefix . "invalid zoneid")
-            }
+        :if (![$onlyChars text=$zoneId chars=$hexChars]) do={
+            :log error ($logPrefix . "ERROR - zoneid must be lowercase hex for " . $hostname)
+            :error ($logPrefix . "invalid zoneid")
         }
     } else={
         :if ($provider = "noip") do={
@@ -396,12 +466,10 @@
                             :error ($logPrefix . "FreeDNS token is not configured")
                         }
                         # The token goes in the URL path: letters and digits only.
-                        :for charIndex from=0 to=([:len $token] - 1) do={
-                            :if ([:typeof [:find $alphanumericChars [:pick $token $charIndex]]] != "num") do={
-                                :log error ($logPrefix . "ERROR - token must be letters and digits only for " . \
-                                    $hostname)
-                                :error ($logPrefix . "invalid FreeDNS token")
-                            }
+                        :if (![$onlyChars text=$token chars=$alphanumericChars]) do={
+                            :log error ($logPrefix . "ERROR - token must be letters and digits only for " . \
+                                $hostname)
+                            :error ($logPrefix . "invalid FreeDNS token")
                         }
                     } else={
                         :log error ($logPrefix . "ERROR - unknown provider for " . $hostname . \
@@ -433,11 +501,9 @@
         :error ($logPrefix . "Cloudflare API token is not configured")
     }
     # The token goes in an HTTP header: letters, digits, hyphens and underscores only.
-    :for charIndex from=0 to=([:len $cloudflareApiToken] - 1) do={
-        :if ([:typeof [:find $tokenChars [:pick $cloudflareApiToken $charIndex]]] != "num") do={
-            :log error ($logPrefix . "ERROR - Cloudflare API token must be letters, digits, - and _ only")
-            :error ($logPrefix . "invalid Cloudflare API token")
-        }
+    :if (![$onlyChars text=$cloudflareApiToken chars=$tokenChars]) do={
+        :log error ($logPrefix . "ERROR - Cloudflare API token must be letters, digits, - and _ only")
+        :error ($logPrefix . "invalid Cloudflare API token")
     }
     # http-header-field format: "name:value,name:value".
     :set cloudflareHeaders ("Authorization:Bearer " . $cloudflareApiToken . \
@@ -538,67 +604,15 @@
         }
 
         :if ($lookupOk) do={
-            # Keep only the first line, without line endings or trailing spaces.
-            :local lineEnd [:find $answer "\n"]
-            :if ([:typeof $lineEnd] = "num") do={
-                :set answer [:pick $answer 0 $lineEnd]
+            # Keep only the first line, up to the first space.
+            :set answer [$firstLine text=$answer]
+            :local spaceAt [:find $answer " "]
+            :if ([:typeof $spaceAt] = "num") do={
+                :set answer [:pick $answer 0 $spaceAt]
             }
-            :set lineEnd [:find $answer "\r"]
-            :if ([:typeof $lineEnd] = "num") do={
-                :set answer [:pick $answer 0 $lineEnd]
-            }
-            :set lineEnd [:find $answer " "]
-            :if ([:typeof $lineEnd] = "num") do={
-                :set answer [:pick $answer 0 $lineEnd]
-            }
-
-            # Accept only four dot-separated numbers from 0 to 255, so that partial values
-            # such as "10.1" (which :toip would expand) are rejected.
-            :local formatOk (([:len $answer] >= 7) && ([:len $answer] <= 15))
-            :if ($formatOk) do={
-                :local octetCount 0
-                :local octetText ""
-                # Loop one step past the end, read as ".", to close the last octet.
-                :for charIndex from=0 to=[:len $answer] do={
-                    :local currentChar "."
-                    :if ($charIndex < [:len $answer]) do={
-                        :set currentChar [:pick $answer $charIndex]
-                    }
-                    :if ($currentChar = ".") do={
-                        :if (([:len $octetText] = 0) || ([:len $octetText] > 3)) do={
-                            :set formatOk false
-                        } else={
-                            :if ([:tonum $octetText] > 255) do={
-                                :set formatOk false
-                            }
-                        }
-                        :set octetCount ($octetCount + 1)
-                        :set octetText ""
-                    } else={
-                        :if ([:typeof [:find $digitChars $currentChar]] = "num") do={
-                            :set octetText ($octetText . $currentChar)
-                        } else={
-                            :set formatOk false
-                        }
-                    }
-                }
-                :if ($octetCount != 4) do={
-                    :set formatOk false
-                }
-            }
-
-            :local candidateIp ""
-            :if ($formatOk) do={
-                :set candidateIp [:toip $answer]
-            }
+            :local candidateIp [$parseIpv4 text=$answer]
             :if ([:typeof $candidateIp] = "ip") do={
-                :local isPublic true
-                :foreach range in=$nonPublicRanges do={
-                    :if (($candidateIp & ($range->1)) = ($range->0)) do={
-                        :set isPublic false
-                    }
-                }
-                :if ($isPublic) do={
+                :if ([$isPublicIp address=$candidateIp ranges=$nonPublicRanges]) do={
                     :set publicIp $candidateIp
                     :log info ($logPrefix . "INFO - public IP is " . $publicIp . \
                         " (" . $serviceName . ")")
@@ -659,13 +673,7 @@
                     # The address comes with its prefix length ("198.18.0.5/32").
                     :local address [:tostr [/ip address get $addressId address]]
                     :local candidateIp [:toip [:pick $address 0 [:find $address "/"]]]
-                    :local isPublic true
-                    :foreach range in=$nonPublicRanges do={
-                        :if (($candidateIp & ($range->1)) = ($range->0)) do={
-                            :set isPublic false
-                        }
-                    }
-                    :if ($isPublic) do={
+                    :if ([$isPublicIp address=$candidateIp ranges=$nonPublicRanges]) do={
                         :set publicCount ($publicCount + 1)
                         :if ($publicCount = 1) do={
                             :set interfaceIp $candidateIp
@@ -701,13 +709,7 @@
             }
 
             :if ([:typeof $interfaceIp] = "ip") do={
-                :local isPublic true
-                :foreach range in=$nonPublicRanges do={
-                    :if (($interfaceIp & ($range->1)) = ($range->0)) do={
-                        :set isPublic false
-                    }
-                }
-                :if ($isPublic) do={
+                :if ([$isPublicIp address=$interfaceIp ranges=$nonPublicRanges]) do={
                     :log info ($logPrefix . "INFO - public IP is " . $interfaceIp . \
                         " (" . $interfaceName . ")")
                 } else={
@@ -937,19 +939,10 @@
                         check-certificate=$checkCertificate output=user as-value]
 
                     # The answer is a code, optionally followed by the IP ("good 1.2.3.4").
-                    :local answerLine [:tostr ($response->"data")]
-                    :local cutAt [:find $answerLine "\n"]
-                    :if ([:typeof $cutAt] = "num") do={
-                        :set answerLine [:pick $answerLine 0 $cutAt]
-                    }
-                    :set cutAt [:find $answerLine "\r"]
-                    :if ([:typeof $cutAt] = "num") do={
-                        :set answerLine [:pick $answerLine 0 $cutAt]
-                    }
-                    :set answerLine [:pick $answerLine 0 $maxAnswerLength]
+                    :local answerLine [:pick [$firstLine text=($response->"data")] 0 $maxAnswerLength]
                     :local answerCode $answerLine
                     :local answerIp ""
-                    :set cutAt [:find $answerLine " "]
+                    :local cutAt [:find $answerLine " "]
                     :if ([:typeof $cutAt] = "num") do={
                         :set answerCode [:pick $answerLine 0 $cutAt]
                         :set answerIp [:pick $answerLine ($cutAt + 1) [:len $answerLine]]
@@ -987,16 +980,7 @@
                         check-certificate=$checkCertificate output=user as-value]
 
                     # One line of text, e.g. "Updated 1 host(s) ..." or "No IP change detected ...".
-                    :local answerLine [:tostr ($response->"data")]
-                    :local cutAt [:find $answerLine "\n"]
-                    :if ([:typeof $cutAt] = "num") do={
-                        :set answerLine [:pick $answerLine 0 $cutAt]
-                    }
-                    :set cutAt [:find $answerLine "\r"]
-                    :if ([:typeof $cutAt] = "num") do={
-                        :set answerLine [:pick $answerLine 0 $cutAt]
-                    }
-                    :set answerLine [:pick $answerLine 0 $maxAnswerLength]
+                    :local answerLine [:pick [$firstLine text=($response->"data")] 0 $maxAnswerLength]
                     :if ([:find $answerLine "Updated"] = 0) do={
                         :log info ($logPrefix . "INFO - " . $hostname . " updated to " . $recordIp . \
                             " (FreeDNS: " . $answerLine . ")")
