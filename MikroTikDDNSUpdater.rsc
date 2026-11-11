@@ -846,6 +846,8 @@
             :local dyndnsBadauth false
             :local duckdnsRejected false
             :local freednsRejected false
+            # Cleared when the provider answers that the record already had this IP.
+            :local recordChanged true
             # No-IP and Dynu share the dyndns2 protocol; only the URL, account and codes differ.
             :local dyndnsName "No-IP"
             :local dyndnsUrl $noipUpdateUrl
@@ -910,6 +912,7 @@
                         :log info ($logPrefix . "INFO - " . $hostname . " updated to " . $recordIp . \
                             " (" . $dyndnsName . ": " . $answerLine . ")")
                     } else={
+                        :set recordChanged false
                         :log info ($logPrefix . "INFO - " . $hostname . " already had " . $recordIp . \
                             " (" . $dyndnsName . ": " . $answerLine . ")")
                     }
@@ -941,6 +944,7 @@
                             " (FreeDNS: " . $answerLine . ")")
                     } else={
                         :if ([:find $answerLine "No IP change detected"] = 0) do={
+                            :set recordChanged false
                             :log info ($logPrefix . "INFO - " . $hostname . " already had " . $recordIp . \
                                 " (FreeDNS: " . $answerLine . ")")
                         } else={
@@ -991,6 +995,7 @@
                         :error ("DuckDNS answered " . $answerStatus)
                     }
                     :if ($answerChange = "NOCHANGE") do={
+                        :set recordChanged false
                         :log info ($logPrefix . "INFO - " . $hostname . " already had " . $recordIp . \
                             " (DuckDNS: OK " . $answerChange . ")")
                     } else={
@@ -1002,7 +1007,9 @@
                             " for " . $hostname)
                     }
                 }
-                :set updatedCount ($updatedCount + 1)
+                :if ($recordChanged) do={
+                    :set updatedCount ($updatedCount + 1)
+                }
             } do={
                 :set failedCount ($failedCount + 1)
                 # DuckDNS and FreeDNS tokens travel in the URL; never copy them to the log if
