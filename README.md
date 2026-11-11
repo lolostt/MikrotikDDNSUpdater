@@ -23,9 +23,10 @@ Whatever the method, the "User configuration" block at the top of the script has
 1. Open a terminal on the router and run:
     ```
     /tool fetch url="https://raw.githubusercontent.com/lolostt/MikroTikDDNSUpdater/main/MikroTikDDNSUpdater.rsc" dst-path=MikroTikDDNSUpdater.rsc check-certificate=yes-without-crl
-    /system script add name=MikroTikDDNSUpdater policy=read,test source=[/file get MikroTikDDNSUpdater.rsc contents]
+    :local source [/file get MikroTikDDNSUpdater.rsc contents]; :if ([:len $source] = 0) do={:error "MikroTikDDNSUpdater.rsc could not be read"}; /system script add name=MikroTikDDNSUpdater policy=read,test source=$source
     /file remove MikroTikDDNSUpdater.rsc
     ```
+    RouterOS reads files of up to 61439 bytes this way and returns nothing for larger ones; the second line stops with an error instead of adding an empty script.
 2. In Winbox or WebFig, go to System > Scripts, open `MikroTikDDNSUpdater` and fill the "User configuration" block in its source.
 3. Go on with [First run and scheduling](#first-run-and-scheduling).
 
