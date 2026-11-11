@@ -781,7 +781,7 @@
 
     # Records already skipped for lack of a public IP are not looked up.
     :if (($recordFailed->$index) = false) do={
-        :onerror readError in={
+        :onerror readError,readErrorInfo in={
             :if ($provider = "cloudflare") do={
                 # Look the A record up by name so its ID does not need to be configured.
                 :local response [/tool fetch \
@@ -841,8 +841,12 @@
             :set failedCount ($failedCount + 1)
             :log error ($logPrefix . "ERROR - cannot read " . $hostname . ": " . $readError)
             # fetch reports Cloudflare 401/403 with a cryptic message: add a clearer hint.
-            :if (($provider = "cloudflare") && (([:typeof [:find $readError "401"]] = "num") || \
-                ([:typeof [:find $readError "403"]] = "num"))) do={
+            :local httpStatus [:tonum ($readErrorInfo->"code")]
+            # A 401 without WWW-Authenticate header is reported as a parsing error, with no code.
+            :if ([:typeof [:find $readError "http: 401 "]] = "num") do={
+                :set httpStatus 401
+            }
+            :if (($provider = "cloudflare") && (($httpStatus = 401) || ($httpStatus = 403))) do={
                 :log error ($logPrefix . "ERROR - check that the Cloudflare API token is valid" . \
                     " and can read DNS records of the zone of " . $hostname)
             }
@@ -899,7 +903,7 @@
                 :set dyndnsAuthHeader $dynuAuthHeader
                 :set dyndnsFatalCodes $dynuFatalCodes
             }
-            :onerror updateError in={
+            :onerror updateError,updateErrorInfo in={
                 :if ($provider = "cloudflare") do={
                     # Only the content is sent, so proxy status and TTL are kept.
                     :local response [/tool fetch \
@@ -1079,8 +1083,13 @@
                 }
                 :log error ($logPrefix . "ERROR - cannot update " . $hostname . ": " . $errorText)
                 # 401/403 make fetch fail before any answer can be read: add a provider hint.
-                :local authError (([:typeof [:find $updateError "401"]] = "num") || \
-                    ([:typeof [:find $updateError "403"]] = "num"))
+                # fetch gives the HTTP status as code; a 401 without WWW-Authenticate header is
+                # reported as a parsing error, with no code.
+                :local httpStatus [:tonum ($updateErrorInfo->"code")]
+                :if ([:typeof [:find $errorText "http: 401 "]] = "num") do={
+                    :set httpStatus 401
+                }
+                :local authError (($httpStatus = 401) || ($httpStatus = 403))
                 :if (($provider = "cloudflare") && $authError) do={
                     :log error ($logPrefix . "ERROR - check that the Cloudflare API token can edit" . \
                         " DNS records of the zone of " . $hostname)
@@ -1103,7 +1112,7 @@
                 }
                 # FreeDNS answers 404 to tokens that are not v2 ones (such as the longer v1 token).
                 :if (($provider = "freedns") && ($freednsRejected || $authError || \
-                    ([:typeof [:find $updateError "404"]] = "num"))) do={
+                    ($httpStatus = 404))) do={
                     :log error ($logPrefix . "ERROR - check that the token of " . $hostname . \
                         " is its FreeDNS v2 update token (the part after /u/), not the v1 one")
                 }
