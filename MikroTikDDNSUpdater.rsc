@@ -607,13 +607,33 @@
                 :if ([:len $addressIds] = 0) do={
                     :error "no IPv4 address on the interface"
                 }
-                :if ([:len $addressIds] > 1) do={
-                    :log warning ($logPrefix . "WARNING - " . $interfaceName . \
-                        " has several IPv4 addresses, using the first one")
+                # Use the first public address: the interface may also hold a private one, e.g.
+                # to reach the modem. Without any, keep the first one for the checks below.
+                :local publicCount 0
+                :foreach addressId in=$addressIds do={
+                    # The address comes with its prefix length ("198.51.100.5/32").
+                    :local address [:tostr [/ip address get $addressId address]]
+                    :local candidateIp [:toip [:pick $address 0 [:find $address "/"]]]
+                    :local isPublic true
+                    :foreach range in=$nonPublicRanges do={
+                        :if (($candidateIp & ($range->1)) = ($range->0)) do={
+                            :set isPublic false
+                        }
+                    }
+                    :if ($isPublic) do={
+                        :set publicCount ($publicCount + 1)
+                        :if ($publicCount = 1) do={
+                            :set interfaceIp $candidateIp
+                        }
+                    }
+                    :if ([:typeof $interfaceIp] != "ip") do={
+                        :set interfaceIp $candidateIp
+                    }
                 }
-                # The address comes with its prefix length ("203.0.113.5/32").
-                :local address [:tostr [/ip address get ($addressIds->0) address]]
-                :set interfaceIp [:toip [:pick $address 0 [:find $address "/"]]]
+                :if ($publicCount > 1) do={
+                    :log warning ($logPrefix . "WARNING - " . $interfaceName . \
+                        " has several public IPv4 addresses, using the first one")
+                }
             } do={
                 :log error ($logPrefix . "ERROR - cannot read the IPv4 address of " . \
                     $interfaceName . ": " . $interfaceError)
