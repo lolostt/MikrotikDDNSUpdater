@@ -401,6 +401,17 @@
             }
         }
     }
+
+    # A field of another provider would be ignored without notice (e.g. a token in a DuckDNS
+    # record, whose token is duckdnsToken).
+    :if (([:typeof ($record->"zoneid")] != "nothing") && ($provider != "cloudflare")) do={
+        :log error ($logPrefix . "ERROR - zoneid only goes in Cloudflare records: " . $hostname)
+        :error ($logPrefix . "zoneid in a record of another provider")
+    }
+    :if (([:typeof ($record->"token")] != "nothing") && ($provider != "freedns")) do={
+        :log error ($logPrefix . "ERROR - token only goes in FreeDNS records: " . $hostname)
+        :error ($logPrefix . "token in a record of another provider")
+    }
 }
 
 # Credentials are only required for the providers in use.
