@@ -268,18 +268,35 @@
         :error ($logPrefix . "hostname is not configured")
     }
 
-    # Lowercase letters, digits, dots and hyphens only, with at least one dot.
+    # Lowercase letters, digits, dots and hyphens only. The hostname goes into the provider URLs
+    # as it is, so these checks are what keeps those URLs safe.
+    :local labelLength 0
+    :local longLabel false
     :for charIndex from=0 to=([:len $hostname] - 1) do={
-        :if ([:typeof [:find $hostnameChars [:pick $hostname $charIndex]]] != "num") do={
+        :local hostnameChar [:pick $hostname $charIndex]
+        :if ([:typeof [:find $hostnameChars $hostnameChar]] != "num") do={
             :log error ($logPrefix . "ERROR - invalid hostname (lowercase only): " . $hostname)
             :error ($logPrefix . "invalid hostname")
         }
+        :if ($hostnameChar = ".") do={
+            :set labelLength 0
+        } else={
+            :set labelLength ($labelLength + 1)
+            :if ($labelLength > 63) do={
+                :set longLabel true
+            }
+        }
     }
+    # At least two labels, none empty, none starting or ending with a hyphen, none longer than
+    # 63 characters, and 253 characters in all.
     :local firstChar [:pick $hostname 0]
     :local lastChar [:pick $hostname ([:len $hostname] - 1)]
     :if (([:typeof [:find $hostname "."]] != "num") || \
         ([:typeof [:find $hostname ".."]] = "num") || \
-        ($firstChar = ".") || ($firstChar = "-") || ($lastChar = ".") || ($lastChar = "-")) do={
+        ([:typeof [:find $hostname ".-"]] = "num") || \
+        ([:typeof [:find $hostname "-."]] = "num") || \
+        ($firstChar = ".") || ($firstChar = "-") || ($lastChar = ".") || ($lastChar = "-") || \
+        $longLabel || ([:len $hostname] > 253)) do={
         :log error ($logPrefix . "ERROR - hostname must be a full domain name: " . $hostname)
         :error ($logPrefix . "invalid hostname")
     }
