@@ -85,7 +85,7 @@ Write every text value between double quotes. Inside them, RouterOS reads `$` as
 - **checkCertificate** (string): TLS certificate check for HTTPS requests, `yes`, `yes-without-crl` (default) or `no`. `no` is not recommended because credentials travel in these requests. RouterOS built-in trust store is enough, no certificates need to be imported.
 
 ### Interface mode (multi-WAN and CGNAT)
-Setting `publicIpService` to `interface` makes the script read the public IP from a router interface instead of asking an external service. It is meant for routers whose WAN interface holds the public IPv4 address itself (PPPoE, or DHCP from an ONT in bridge mode):
+Setting `publicIpService` to `interface` makes the script read the public IP from a router interface instead of asking an external service. It is meant for routers whose WAN interface holds the public IPv4 address itself (PPPoE, or DHCP from an ONT in bridge mode). On those routers it is the recommended mode: it does not depend on third-party services, and it cannot pick a wrong address when the router's traffic leaves through a VPN or a backup WAN, as an external service would see the address of that path instead. It also covers:
 - **Multi-WAN:** with two or more WANs, different records can take their IP from different interfaces. Each record follows a fixed interface, not whichever WAN the default route uses at that moment:
     - `wanInterface` sets the interface for every record that does not say otherwise.
     - A record that must follow another WAN gets an `interface` field inside its own entry in `records`, next to `provider` and `hostname`.
