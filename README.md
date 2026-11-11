@@ -127,7 +127,7 @@ If FreeDNS answers that it could not find any matching DNS records, the token is
 
 If DuckDNS answers `KO`, the token is wrong or the subdomain does not belong to the account. DuckDNS gives no other detail.
 
-Each run takes about one second and writes about 3 lines to the log, plus 2 per record. It does not write to flash storage, unless your logging configuration sends script messages to disk.
+Each run takes about one second and writes about 4 lines to the log, plus 2 per record. It does not write to flash storage, unless your logging configuration sends script messages to disk.
 
 A run cannot last until the next scheduled one: each request gives up after about 10 seconds without an answer. Running the script by hand while the scheduler also runs it is harmless, as both runs send the same updates.
 
