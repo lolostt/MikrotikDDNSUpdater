@@ -136,6 +136,9 @@
 :local linkLocalNetwork 169.254.0.0
 :local linkLocalNetmask 255.255.0.0
 
+# Longest part of a provider answer copied to the log (an error page can be several KB).
+:local maxAnswerLength 100
+
 :local cloudflareApiUrl "https://api.cloudflare.com/client/v4/zones/"
 
 # No-IP update API and authoritative name server (avoids stale cached answers).
@@ -890,6 +893,7 @@
                     :if ([:typeof $cutAt] = "num") do={
                         :set answerLine [:pick $answerLine 0 $cutAt]
                     }
+                    :set answerLine [:pick $answerLine 0 $maxAnswerLength]
                     :local answerCode $answerLine
                     :local answerIp ""
                     :set cutAt [:find $answerLine " "]
@@ -939,6 +943,7 @@
                     :if ([:typeof $cutAt] = "num") do={
                         :set answerLine [:pick $answerLine 0 $cutAt]
                     }
+                    :set answerLine [:pick $answerLine 0 $maxAnswerLength]
                     :if ([:find $answerLine "Updated"] = 0) do={
                         :log info ($logPrefix . "INFO - " . $hostname . " updated to " . $recordIp . \
                             " (FreeDNS: " . $answerLine . ")")
@@ -983,7 +988,7 @@
                             }
                         }
                     }
-                    :local answerStatus [:tostr ($answerLines->0)]
+                    :local answerStatus [:pick [:tostr ($answerLines->0)] 0 $maxAnswerLength]
                     :local answerIp [:tostr ($answerLines->1)]
                     :local answerChange [:tostr ($answerLines->3)]
 
