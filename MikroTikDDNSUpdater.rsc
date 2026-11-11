@@ -201,7 +201,37 @@
 :local alphanumericChars "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 :local tokenChars ($alphanumericChars . "-_")
 
-# ----- Helper functions
+# ============================================================================
+# Runtime variables
+# ============================================================================
+
+:local recordCount 0
+# Providers found in records (provider -> true), the IP of their name servers and the
+# dyndns2 authorization values (provider -> value).
+:local usedProviders [:toarray ""]
+:local nameServerIps [:toarray ""]
+:local authHeaders [:toarray ""]
+:local cloudflareHeaders ""
+:local publicIp ""
+# Public IP quorum: each different address returned, how many services returned it and which.
+:local quorum 1
+:local seenIps [:toarray ""]
+:local seenCounts [:toarray ""]
+:local seenServices [:toarray ""]
+# Per-record state, indexed like $records.
+:local recordIds [:toarray ""]
+:local recordInterfaces [:toarray ""]
+:local recordIps [:toarray ""]
+:local dnsIps [:toarray ""]
+:local needsUpdate [:toarray ""]
+:local recordFailed [:toarray ""]
+:local failedCount 0
+:local updatedCount 0
+
+# ============================================================================
+# Helper functions
+# ============================================================================
+
 # A function does not see the caller's variables: everything it needs comes as a parameter.
 
 # true if every character of text is in chars. An empty text is true.
@@ -273,33 +303,6 @@
     }
     :return [:toip $text]
 }
-
-# ============================================================================
-# Runtime variables
-# ============================================================================
-
-:local recordCount 0
-# Providers found in records (provider -> true), the IP of their name servers and the
-# dyndns2 authorization values (provider -> value).
-:local usedProviders [:toarray ""]
-:local nameServerIps [:toarray ""]
-:local authHeaders [:toarray ""]
-:local cloudflareHeaders ""
-:local publicIp ""
-# Public IP quorum: each different address returned, how many services returned it and which.
-:local quorum 1
-:local seenIps [:toarray ""]
-:local seenCounts [:toarray ""]
-:local seenServices [:toarray ""]
-# Per-record state, indexed like $records.
-:local recordIds [:toarray ""]
-:local recordInterfaces [:toarray ""]
-:local recordIps [:toarray ""]
-:local dnsIps [:toarray ""]
-:local needsUpdate [:toarray ""]
-:local recordFailed [:toarray ""]
-:local failedCount 0
-:local updatedCount 0
 
 # ============================================================================
 # Validate user configuration
