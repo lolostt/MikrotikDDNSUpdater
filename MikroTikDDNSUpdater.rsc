@@ -1107,7 +1107,7 @@
                         " DNS records of the zone of " . $hostname)
                 }
                 :if (($provider = "noip") && ($dyndnsFatal || $authError)) do={
-                    :log error ($logPrefix . "ERROR - fix the No-IP account or hostname now:" . \
+                    :log error ($logPrefix . "ERROR - fix the No-IP account or hostname now, or disable the scheduler:" . \
                         " No-IP may block clients that keep sending failing updates")
                 }
                 :if (($provider = "duckdns") && ($duckdnsRejected || $authError)) do={
@@ -1115,7 +1115,7 @@
                         " belongs to the account")
                 }
                 :if (($provider = "dynu") && ($dyndnsFatal || $authError)) do={
-                    :log error ($logPrefix . "ERROR - fix the Dynu account or hostname now:" . \
+                    :log error ($logPrefix . "ERROR - fix the Dynu account or hostname now, or disable the scheduler:" . \
                         " Dynu may block clients that keep sending failing updates")
                 }
                 :if ($dyndnsBadauth) do={

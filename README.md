@@ -118,7 +118,7 @@ Script has 5 stages:
 
 A record that fails does not stop the others: the remaining records are still processed and the script ends with an error.
 
-If No-IP answers `badauth`, `nohost` or a similar error, fix the account or hostname as soon as possible: No-IP may block clients that keep sending failing updates.
+If No-IP answers `badauth`, `nohost` or a similar error, fix the account or hostname as soon as possible: No-IP may block clients that keep sending failing updates. The script keeps no state between runs, so every scheduled run sends the failing update again while the IP differs: if the fix has to wait, disable the scheduler entry (`/system scheduler disable MikroTikDDNSUpdater`) and enable it again afterwards.
 
 Dynu uses the same answers as No-IP (`good`, `nochg`, `badauth`, `nohost`...) and the same advice applies. If it answers `911`, its servers have a problem: the next scheduled run tries again.
 
