@@ -40,7 +40,7 @@ Whatever the method, the "User configuration" block at the top of the script has
 
 #### First run and scheduling
 1. Click *Run Script* and check the messages starting with `MikroTikDDNSUpdater:` under Log. With `dryRun` set to `true`, nothing is changed: the log shows the public IP address and, for each record, its current address and whether it needs an update. The dry-run `WARNING` lines are expected; fix any `ERROR` before going on.
-2. Set `dryRun` to `false` in the script source and run it again. The log now shows, for each record, whether it was updated or was already up to date.
+2. Set `dryRun` to `false` in the script source and run it again. The log now shows, for each record, whether it was updated or was already up to date. DuckDNS, No-IP, Dynu and FreeDNS credentials are only used when a record needs an update, so a wrong one shows up in the log the first time that happens.
 3. Schedule it to run automatically (see [Automation](#automation)).
 
 To update to a newer build, keep a copy of your "User configuration" block, replace the source of the existing script with the new file and paste your block back. The script name and the scheduler entry stay the same.
@@ -76,7 +76,7 @@ Write every text value between double quotes. Inside them, RouterOS reads `$` as
 - **noipUsername** / **noipPassword** (string): No-IP account. Only needed for No-IP records.
 - **dynuUsername** / **dynuPassword** (string): Dynu account username and IP Update Password (or its MD5 or SHA-256 hash), not the account password. Only needed for Dynu records.
 - **cloudflareApiToken** (string): Cloudflare API token. Only needed for Cloudflare records.
-- **dryRun** (boolean): `true` checks everything but does not change any DNS record. Enabled by default.
+- **dryRun** (boolean): `true` checks the configuration, gets the public IP and reads every record, but does not change any DNS record. Enabled by default. Only the Cloudflare token is tested, because it is needed to read Cloudflare records: DuckDNS, No-IP, Dynu and FreeDNS credentials are only checked for their format, and are first sent when a record needs an update.
 - **publicIpService** (string) selects the method for determining the current public IP address:
     - `auto` (default) tries every service in order until one answers: icanhazip, ipify, Amazon, ipinfo and MikroTik.
     - `icanhazip`, `ipify`, `amazon`, `ipinfo` or `mikrotik` uses only that service. `mikrotik` reads IP > Cloud and only works if IP Cloud DDNS is already enabled.

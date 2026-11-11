@@ -77,7 +77,9 @@
 
 # ----------------------------------------------------------------------------
 
-# true = check everything but do not change any DNS record.
+# true = check the configuration and read every record, but do not change any DNS record.
+# Only the Cloudflare token is tested (it is needed to read the records): DuckDNS, No-IP, Dynu
+# and FreeDNS credentials are first sent when a record needs an update.
 :local dryRun true
 
 # "auto" tries every public IP service in order until one answers.
