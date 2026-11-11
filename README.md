@@ -11,7 +11,7 @@ A RouterOS script that keeps DuckDNS, No-IP, Dynu, FreeDNS and/or Cloudflare DNS
 - **No-IP:** the account email and password. The hostname must already exist in the account.
 - **Dynu:** the account username and the IP Update Password (*Control Panel > My Account > Username/Password*), or its MD5 or SHA-256 hash. Do not use the account password: the IP Update Password only allows IP updates. The hostname must already exist in the account.
 - **FreeDNS:** the update token of each record: in *Dynamic DNS*, the part after `/u/` in its version 2 update URL (`https://sync.afraid.org/u/<token>/`). The A record must already exist.
-- **Cloudflare:** an API token with *Zone > DNS > Edit* permission, and the Zone ID of each domain (domain *Overview* page, *API* section). The A record must already exist.
+- **Cloudflare:** an API token with *Zone > DNS > Edit* permission, and the Zone ID of each domain (domain *Overview* page, *API* section). The A record must already exist. Under *Zone Resources*, limit the token to the zones of your records (*Include > Specific zone*), not *All zones*: the token is stored in the script, and a token for every zone would let anyone who reads it redirect any domain of the account. If the router has a fixed public IP, *Client IP Address Filtering* can also limit the token to it.
 
 ### Installing
 Whatever the method, the "User configuration" block at the top of the script has to be filled (see [Configuration](#configuration)):
@@ -45,7 +45,7 @@ Whatever the method, the "User configuration" block at the top of the script has
 
 To update to a newer build, keep a copy of your "User configuration" block, replace the source of the existing script with the new file and paste your block back. The script name and the scheduler entry stay the same.
 
-> **Security note:** whenever the script is added or edited, from the terminal, Winbox or WebFig, RouterOS writes its whole source, credentials included, to the system log. Take extra care if the log is sent to a remote syslog server.
+> **Security note:** credentials are stored in plain text in the script source. Whenever the script is added or edited, from the terminal, Winbox or WebFig, RouterOS writes its whole source, credentials included, to the system log. Take extra care if the log is sent to a remote syslog server. `/export` and backups of the configuration also carry the credentials, so keep them private.
 
 ## Usage
 You can run the script manually using Winbox or WebFig under System > Scripts section.

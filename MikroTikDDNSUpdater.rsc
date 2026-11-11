@@ -67,7 +67,8 @@
 
 # ----- Cloudflare
 
-# Cloudflare API token with Zone > DNS > Edit permission. Only needed for Cloudflare records.
+# Cloudflare API token with Zone > DNS > Edit permission, limited to the zones of your records
+# (Zone Resources > Include > Specific zone). Only needed for Cloudflare records.
 :local cloudflareApiToken "CLOUDFLARE_API_TOKEN"
 
 # ----------------------------------------------------------------------------
