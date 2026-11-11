@@ -24,18 +24,17 @@
 # variable, " as the end of the value and \ as an escape, and changes the value without any
 # error: write \$, \" and \\ instead (the password Pa$s"w\d goes as "Pa\$s\"w\\d").
 
-# DNS records to keep updated. Field names and hostnames must be lowercase.
+# DNS records to keep updated, one entry per hostname, in lowercase. Replace the examples
+# below with your own and delete the entries of the providers you do not use. Formats:
 #   DuckDNS:    {provider="duckdns"; hostname="home.duckdns.org"}
 #   No-IP:      {provider="noip"; hostname="home.ddns.net"}
 #   Dynu:       {provider="dynu"; hostname="home.dynu.net"}
 #   FreeDNS:    {provider="freedns"; hostname="home.mooo.com"; token="<update token>"}
 #   Cloudflare: {provider="cloudflare"; hostname="home.example.com"; zoneid="<zone ID>"}
 #
-# Multi-WAN (only with publicIpService "interface"): every record takes the IP of wanInterface.
-# To make one record follow another WAN, add interface="<name>" inside that record's own entry,
-# next to provider and hostname:
+# Only with publicIpService "interface": a record can follow its own WAN instead of
+# wanInterface by adding interface="<name>":
 #   {provider="noip"; hostname="office.ddns.net"; interface="ether2"}
-# With any other publicIpService, a record with an interface field is an error.
 
 :local records {
     {provider="duckdns"; hostname="SUBDOMAIN.DOMAIN.COM"};
