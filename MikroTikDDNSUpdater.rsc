@@ -81,6 +81,14 @@
 # and FreeDNS credentials are first sent when a record needs an update.
 :local dryRun true
 
+# Only for publicIpService "interface" (see below): the interface that holds the public IPv4
+# address, e.g. "pppoe-out1". Every record without its own interface field uses it; if all
+# records have one, it can keep its placeholder. With PPPoE, use the PPPoE interface, not the
+# Ethernet port under it. A private or CGNAT address on the interface is reported as an error.
+:local wanInterface "WAN_INTERFACE"
+
+# ----------------------------------------------------------------------------
+
 # "auto" asks the public IP services in order until publicIpQuorum of them agree (see below).
 # Set "icanhazip", "ipify", "amazon", "ipinfo" or "mikrotik" to use only that service.
 # "mikrotik" reads /ip cloud and only works if IP Cloud DDNS is already enabled.
@@ -92,12 +100,6 @@
 # used. 2 (default) protects the records from one service that answers a wrong address; 1 takes
 # the first answer and saves one request per run.
 :local publicIpQuorum 2
-
-# Only for publicIpService "interface": the interface that holds the public IPv4 address,
-# e.g. "pppoe-out1". Every record without its own interface field uses it; if all records
-# have one, it can keep its placeholder. With PPPoE, use the PPPoE interface, not the
-# Ethernet port under it. A private or CGNAT address on the interface is reported as an error.
-:local wanInterface "WAN_INTERFACE"
 
 # TLS certificate check for HTTPS requests: "yes", "yes-without-crl" or "no".
 # "no" is not recommended: credentials travel in these requests.
