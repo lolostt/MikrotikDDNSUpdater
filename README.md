@@ -72,6 +72,8 @@ Write every text value between double quotes. Inside them, RouterOS reads `$` as
     }
     ```
     FreeDNS records carry their own `token` (letters and digits); Cloudflare records carry their `zoneid`.
+
+    These are placeholders, one per provider: replace them with your own records and delete the entries of the providers you do not use. An entry left with `SUBDOMAIN.DOMAIN.COM` stops the script with an error. The credentials of providers that have no record can keep their placeholder values.
 - **duckdnsToken** (string): DuckDNS account token (`xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`). Only needed for DuckDNS records.
 - **noipUsername** / **noipPassword** (string): No-IP account. Only needed for No-IP records.
 - **dynuUsername** / **dynuPassword** (string): Dynu account username and IP Update Password (or its MD5 or SHA-256 hash), not the account password. Only needed for Dynu records.
