@@ -176,6 +176,7 @@
 :local hexChars "0123456789abcdef"
 :local digitChars "0123456789"
 :local alphanumericChars "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+:local tokenChars ($alphanumericChars . "-_")
 
 # ============================================================================
 # Runtime variables
@@ -389,10 +390,12 @@
         :log error ($logPrefix . "ERROR - Cloudflare API token is not set")
         :error ($logPrefix . "Cloudflare API token is not configured")
     }
-    :if (([:typeof [:find $cloudflareApiToken " "]] = "num") || \
-        ([:typeof [:find $cloudflareApiToken ","]] = "num")) do={
-        :log error ($logPrefix . "ERROR - Cloudflare API token contains spaces or commas")
-        :error ($logPrefix . "invalid Cloudflare API token")
+    # The token goes in an HTTP header: letters, digits, hyphens and underscores only.
+    :for charIndex from=0 to=([:len $cloudflareApiToken] - 1) do={
+        :if ([:typeof [:find $tokenChars [:pick $cloudflareApiToken $charIndex]]] != "num") do={
+            :log error ($logPrefix . "ERROR - Cloudflare API token must be letters, digits, - and _ only")
+            :error ($logPrefix . "invalid Cloudflare API token")
+        }
     }
     # http-header-field format: "name:value,name:value".
     :set cloudflareHeaders ("Authorization:Bearer " . $cloudflareApiToken . \
