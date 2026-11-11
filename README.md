@@ -128,6 +128,8 @@ If DuckDNS answers `KO`, the token is wrong or the subdomain does not belong to 
 
 Each run takes about one second and writes about 3 lines to the log, plus 2 per record. It does not write to flash storage, unless your logging configuration sends script messages to disk.
 
+A run cannot last until the next scheduled one: each request gives up after about 10 seconds without an answer. Running the script by hand while the scheduler also runs it is harmless, as both runs send the same updates.
+
 ### Automation
 To set and forget the script, run it with the RouterOS scheduler under System > Scheduler. The scheduler entry needs the same "read" and "test" permissions. Running it every 15 minutes is recommended: it stays far below Cloudflare API limits and DuckDNS, No-IP, Dynu and FreeDNS only receive a request when the IP changes.
 
