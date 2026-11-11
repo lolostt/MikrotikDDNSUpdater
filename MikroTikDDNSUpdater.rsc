@@ -816,8 +816,17 @@
                     :set nameServerIp $freednsNameServerIp
                 }
                 :if ([:typeof $nameServerIp] = "ip") do={
-                    :set ($dnsIps->$index) [:resolve domain-name=$hostname \
-                        server=$nameServerIp type=ipv4]
+                    # If the provider's server does not answer, the API may still work: read the
+                    # record through the router's DNS so that the update is not blocked.
+                    :onerror nameServerError in={
+                        :set ($dnsIps->$index) [:resolve domain-name=$hostname \
+                            server=$nameServerIp type=ipv4]
+                    } do={
+                        :log warning ($logPrefix . "WARNING - the name server of " . $hostname . \
+                            " failed (" . $nameServerError . "), using the router's DNS," . \
+                            " which may still hold the old IP")
+                        :set ($dnsIps->$index) [:resolve domain-name=$hostname type=ipv4]
+                    }
                 } else={
                     :set ($dnsIps->$index) [:resolve domain-name=$hostname type=ipv4]
                 }
