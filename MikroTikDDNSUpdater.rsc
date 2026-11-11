@@ -104,6 +104,11 @@
 # ============================================================================
 
 :local logPrefix "MikroTikDDNSUpdater: "
+# Same number as the Build line at the top.
+:local buildNumber 17
+# No-IP asks clients to identify themselves; fetch would send "RouterOS <version>". No commas:
+# http-header-field uses them to separate headers.
+:local userAgent ("MikroTikDDNSUpdater/" . $buildNumber . " github.com/lolostt/MikroTikDDNSUpdater")
 
 # Public IP services, in the order used by "auto". All of them return IPv4 only.
 :local publicIpServiceOrder {"icanhazip"; "ipify"; "amazon"; "ipinfo"; "mikrotik"}
@@ -921,7 +926,8 @@
                 :if (($provider = "noip") || ($provider = "dynu")) do={
                     :local response [/tool fetch \
                         url=($dyndnsUrl . "?hostname=" . $hostname . "&myip=" . $recordIp) \
-                        http-header-field=("Authorization:" . $dyndnsAuthHeader) \
+                        http-header-field=("Authorization:" . $dyndnsAuthHeader . ",User-Agent:" . \
+                            $userAgent) \
                         check-certificate=$checkCertificate output=user as-value]
 
                     # The answer is a code, optionally followed by the IP ("good 1.2.3.4").
