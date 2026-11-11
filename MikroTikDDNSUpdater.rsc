@@ -994,6 +994,11 @@
                     :if ($answerStatus != "OK") do={
                         :error ("DuckDNS answered " . $answerStatus)
                     }
+                    # Without UPDATED or NOCHANGE the answer is not the verbose one: do not
+                    # count it as updated.
+                    :if (($answerChange != "UPDATED") && ($answerChange != "NOCHANGE")) do={
+                        :error "DuckDNS answered OK without UPDATED or NOCHANGE"
+                    }
                     :if ($answerChange = "NOCHANGE") do={
                         :set recordChanged false
                         :log info ($logPrefix . "INFO - " . $hostname . " already had " . $recordIp . \
