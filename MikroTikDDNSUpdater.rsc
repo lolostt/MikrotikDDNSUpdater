@@ -150,27 +150,32 @@
 # Longest part of a provider answer copied to the log (an error page can be several KB).
 :local maxAnswerLength 100
 
-:local cloudflareApiUrl "https://api.cloudflare.com/client/v4/zones/"
+# Providers, keyed by the provider value of records. Keys stay in lowercase: RouterOS reads an
+# unquoted key with capitals as a comparison.
+#   name        name used in the log
+#   protocol    how the update request is built: duckdns, dyndns2, freedns or cloudflare
+#   url         update API (for Cloudflare, the zones API, also used to read the record)
+#   nameserver  authoritative name server the record is read from (avoids stale cached answers);
+#               Cloudflare records are read through its API instead
+#   field       record field the provider needs, if any
+#   fatalcodes  dyndns2 answers that must be fixed by the user (the provider may block clients
+#               that keep sending them)
+# Dynu has no single authoritative server; ns0.dynu.com is present in every Dynu domain.
+:local providers {
+    duckdns={name="DuckDNS"; protocol="duckdns"; url="https://www.duckdns.org/update";
+        nameserver="ns1.duckdns.org"};
+    noip={name="No-IP"; protocol="dyndns2"; url="https://dynupdate.no-ip.com/nic/update";
+        nameserver="nf1.no-ip.com"; fatalcodes={"nohost"; "badauth"; "badagent"; "!donator"; "abuse"}};
+    dynu={name="Dynu"; protocol="dyndns2"; url="https://api.dynu.com/nic/update";
+        nameserver="ns0.dynu.com";
+        fatalcodes={"nohost"; "badauth"; "notfqdn"; "numhost"; "!donator"; "abuse"; "unknown"}};
+    freedns={name="FreeDNS"; protocol="freedns"; url="https://sync.afraid.org/u/";
+        nameserver="ns1.afraid.org"; field="token"};
+    cloudflare={name="Cloudflare"; protocol="cloudflare"; url="https://api.cloudflare.com/client/v4/zones/";
+        field="zoneid"}
+}
 
-# No-IP update API and authoritative name server (avoids stale cached answers).
-:local noipUpdateUrl "https://dynupdate.no-ip.com/nic/update"
-:local noipNameServer "nf1.no-ip.com"
-# No-IP answers that must be fixed by the user; No-IP may block clients that keep retrying.
-:local noipFatalCodes {"nohost"; "badauth"; "badagent"; "!donator"; "abuse"}
-
-# Dynu update API (dyndns2, like No-IP), a name server present in every Dynu domain, and the
-# answers that must be fixed by the user.
-:local dynuUpdateUrl "https://api.dynu.com/nic/update"
-:local dynuNameServer "ns0.dynu.com"
-:local dynuFatalCodes {"nohost"; "badauth"; "notfqdn"; "numhost"; "!donator"; "abuse"; "unknown"}
-
-# FreeDNS v2 update API (the token goes in the path) and authoritative name server.
-:local freednsUpdateUrl "https://sync.afraid.org/u/"
-:local freednsNameServer "ns1.afraid.org"
-
-# DuckDNS update API, authoritative name server and the suffix every DuckDNS hostname ends with.
-:local duckdnsUpdateUrl "https://www.duckdns.org/update"
-:local duckdnsNameServer "ns1.duckdns.org"
+# Every DuckDNS hostname ends with this suffix.
 :local duckdnsSuffix ".duckdns.org"
 
 # Placeholders used to detect unedited configuration.
@@ -269,18 +274,12 @@
 # ============================================================================
 
 :local recordCount 0
-:local usesCloudflare false
-:local usesNoip false
+# Providers found in records (provider -> true), the IP of their name servers and the
+# dyndns2 authorization values (provider -> value).
+:local usedProviders [:toarray ""]
+:local nameServerIps [:toarray ""]
+:local authHeaders [:toarray ""]
 :local cloudflareHeaders ""
-:local noipAuthHeader ""
-:local noipNameServerIp ""
-:local usesDuckdns false
-:local duckdnsNameServerIp ""
-:local usesDynu false
-:local dynuAuthHeader ""
-:local dynuNameServerIp ""
-:local usesFreedns false
-:local freednsNameServerIp ""
 :local publicIp ""
 # Per-record state, indexed like $records.
 :local recordIds [:toarray ""]
@@ -421,8 +420,49 @@
     }
     :set recordInterfaces ($recordInterfaces, $recordInterface)
 
+    :if ([:typeof ($providers->$provider)] != "array") do={
+        :local providerList ""
+        :foreach providerKey,providerInfo in=$providers do={
+            :if ([:len $providerList] > 0) do={
+                :set providerList ($providerList . ", ")
+            }
+            :set providerList ($providerList . $providerKey)
+        }
+        :log error ($logPrefix . "ERROR - unknown provider for " . $hostname . " (use " . \
+            $providerList . ")")
+        :error ($logPrefix . "invalid provider")
+    }
+    :set ($usedProviders->$provider) true
+
+    :if ($provider = "duckdns") do={
+        # DuckDNS only updates names directly under duckdns.org; deeper names
+        # (a.home.duckdns.org) follow the IP of their parent.
+        :local suffixStart ([:len $hostname] - [:len $duckdnsSuffix])
+        :if (($suffixStart < 1) || \
+            ([:pick $hostname $suffixStart [:len $hostname]] != $duckdnsSuffix) || \
+            ([:typeof [:find [:pick $hostname 0 $suffixStart] "."]] = "num")) do={
+            :log error ($logPrefix . "ERROR - DuckDNS hostname must be <name>" . \
+                $duckdnsSuffix . ": " . $hostname)
+            :error ($logPrefix . "invalid DuckDNS hostname")
+        }
+    }
+
+    :if ($provider = "freedns") do={
+        :local token ($record->"token")
+        :if (([:typeof $token] != "str") || ([:len $token] = 0) || \
+            ($token = $placeholderFreednsToken)) do={
+            :log error ($logPrefix . "ERROR - token is not set for " . $hostname)
+            :error ($logPrefix . "FreeDNS token is not configured")
+        }
+        # The token goes in the URL path: letters and digits only.
+        :if (![$onlyChars text=$token chars=$alphanumericChars]) do={
+            :log error ($logPrefix . "ERROR - token must be letters and digits only for " . \
+                $hostname)
+            :error ($logPrefix . "invalid FreeDNS token")
+        }
+    }
+
     :if ($provider = "cloudflare") do={
-        :set usesCloudflare true
         :local zoneId ($record->"zoneid")
         :if (([:typeof $zoneId] != "str") || ($zoneId = $placeholderCloudflareZoneId)) do={
             :log error ($logPrefix . "ERROR - zoneid is not set for " . $hostname)
@@ -437,64 +477,23 @@
             :log error ($logPrefix . "ERROR - zoneid must be lowercase hex for " . $hostname)
             :error ($logPrefix . "invalid zoneid")
         }
-    } else={
-        :if ($provider = "noip") do={
-            :set usesNoip true
-        } else={
-            :if ($provider = "duckdns") do={
-                :set usesDuckdns true
-                # DuckDNS only updates names directly under duckdns.org; deeper names
-                # (a.home.duckdns.org) follow the IP of their parent.
-                :local suffixStart ([:len $hostname] - [:len $duckdnsSuffix])
-                :if (($suffixStart < 1) || \
-                    ([:pick $hostname $suffixStart [:len $hostname]] != $duckdnsSuffix) || \
-                    ([:typeof [:find [:pick $hostname 0 $suffixStart] "."]] = "num")) do={
-                    :log error ($logPrefix . "ERROR - DuckDNS hostname must be <name>" . \
-                        $duckdnsSuffix . ": " . $hostname)
-                    :error ($logPrefix . "invalid DuckDNS hostname")
-                }
-            } else={
-                :if ($provider = "dynu") do={
-                    :set usesDynu true
-                } else={
-                    :if ($provider = "freedns") do={
-                        :set usesFreedns true
-                        :local token ($record->"token")
-                        :if (([:typeof $token] != "str") || ([:len $token] = 0) || \
-                            ($token = $placeholderFreednsToken)) do={
-                            :log error ($logPrefix . "ERROR - token is not set for " . $hostname)
-                            :error ($logPrefix . "FreeDNS token is not configured")
-                        }
-                        # The token goes in the URL path: letters and digits only.
-                        :if (![$onlyChars text=$token chars=$alphanumericChars]) do={
-                            :log error ($logPrefix . "ERROR - token must be letters and digits only for " . \
-                                $hostname)
-                            :error ($logPrefix . "invalid FreeDNS token")
-                        }
-                    } else={
-                        :log error ($logPrefix . "ERROR - unknown provider for " . $hostname . \
-                            " (use duckdns, noip, dynu, freedns or cloudflare)")
-                        :error ($logPrefix . "invalid provider")
-                    }
-                }
-            }
-        }
     }
 
     # A field of another provider would be ignored without notice (e.g. a token in a DuckDNS
     # record, whose token is duckdnsToken).
-    :if (([:typeof ($record->"zoneid")] != "nothing") && ($provider != "cloudflare")) do={
-        :log error ($logPrefix . "ERROR - zoneid only goes in Cloudflare records: " . $hostname)
-        :error ($logPrefix . "zoneid in a record of another provider")
-    }
-    :if (([:typeof ($record->"token")] != "nothing") && ($provider != "freedns")) do={
-        :log error ($logPrefix . "ERROR - token only goes in FreeDNS records: " . $hostname)
-        :error ($logPrefix . "token in a record of another provider")
+    :foreach providerKey,providerInfo in=$providers do={
+        :local field ($providerInfo->"field")
+        :if (([:typeof $field] = "str") && ($providerKey != $provider) && \
+            ([:typeof ($record->$field)] != "nothing")) do={
+            :log error ($logPrefix . "ERROR - " . $field . " only goes in " . ($providerInfo->"name") . \
+                " records: " . $hostname)
+            :error ($logPrefix . $field . " in a record of another provider")
+        }
     }
 }
 
 # Credentials are only required for the providers in use.
-:if ($usesCloudflare) do={
+:if (($usedProviders->"cloudflare") = true) do={
     :if (([:len $cloudflareApiToken] = 0) || \
         ($cloudflareApiToken = $placeholderCloudflareApiToken)) do={
         :log error ($logPrefix . "ERROR - Cloudflare API token is not set")
@@ -510,7 +509,7 @@
         ",Content-Type:application/json")
 }
 
-:if ($usesNoip) do={
+:if (($usedProviders->"noip") = true) do={
     :if (([:len $noipUsername] = 0) || ($noipUsername = $placeholderNoipUsername)) do={
         :log error ($logPrefix . "ERROR - No-IP username is not set")
         :error ($logPrefix . "No-IP username is not configured")
@@ -524,11 +523,11 @@
         :log error ($logPrefix . "ERROR - No-IP password is not set")
         :error ($logPrefix . "No-IP password is not configured")
     }
-    :set noipAuthHeader ("Basic " . [:convert ($noipUsername . ":" . $noipPassword) \
+    :set ($authHeaders->"noip") ("Basic " . [:convert ($noipUsername . ":" . $noipPassword) \
         from=raw to=base64])
 }
 
-:if ($usesDynu) do={
+:if (($usedProviders->"dynu") = true) do={
     :if (([:len $dynuUsername] = 0) || ($dynuUsername = $placeholderDynuUsername)) do={
         :log error ($logPrefix . "ERROR - Dynu username is not set")
         :error ($logPrefix . "Dynu username is not configured")
@@ -542,11 +541,11 @@
         :log error ($logPrefix . "ERROR - Dynu password is not set")
         :error ($logPrefix . "Dynu password is not configured")
     }
-    :set dynuAuthHeader ("Basic " . [:convert ($dynuUsername . ":" . $dynuPassword) \
+    :set ($authHeaders->"dynu") ("Basic " . [:convert ($dynuUsername . ":" . $dynuPassword) \
         from=raw to=base64])
 }
 
-:if ($usesDuckdns) do={
+:if (($usedProviders->"duckdns") = true) do={
     :if (([:len $duckdnsToken] = 0) || ($duckdnsToken = $placeholderDuckdnsToken)) do={
         :log error ($logPrefix . "ERROR - DuckDNS token is not set")
         :error ($logPrefix . "DuckDNS token is not configured")
@@ -755,36 +754,15 @@
 # ============================================================================
 
 # Ask each provider's own name server; fall back to the router's resolver if it cannot be found.
-:if ($usesNoip) do={
-    :onerror nameServerError in={
-        :set noipNameServerIp [:resolve domain-name=$noipNameServer type=ipv4]
-    } do={
-        :log warning ($logPrefix . "WARNING - cannot resolve " . $noipNameServer . \
-            ", using the router's DNS for No-IP records")
-    }
-}
-:if ($usesDuckdns) do={
-    :onerror nameServerError in={
-        :set duckdnsNameServerIp [:resolve domain-name=$duckdnsNameServer type=ipv4]
-    } do={
-        :log warning ($logPrefix . "WARNING - cannot resolve " . $duckdnsNameServer . \
-            ", using the router's DNS for DuckDNS records")
-    }
-}
-:if ($usesDynu) do={
-    :onerror nameServerError in={
-        :set dynuNameServerIp [:resolve domain-name=$dynuNameServer type=ipv4]
-    } do={
-        :log warning ($logPrefix . "WARNING - cannot resolve " . $dynuNameServer . \
-            ", using the router's DNS for Dynu records")
-    }
-}
-:if ($usesFreedns) do={
-    :onerror nameServerError in={
-        :set freednsNameServerIp [:resolve domain-name=$freednsNameServer type=ipv4]
-    } do={
-        :log warning ($logPrefix . "WARNING - cannot resolve " . $freednsNameServer . \
-            ", using the router's DNS for FreeDNS records")
+:foreach provider,providerInfo in=$providers do={
+    :local nameServer ($providerInfo->"nameserver")
+    :if ((($usedProviders->$provider) = true) && ([:typeof $nameServer] = "str")) do={
+        :onerror nameServerError in={
+            :set ($nameServerIps->$provider) [:resolve domain-name=$nameServer type=ipv4]
+        } do={
+            :log warning ($logPrefix . "WARNING - cannot resolve " . $nameServer . \
+                ", using the router's DNS for " . ($providerInfo->"name") . " records")
+        }
     }
 }
 
@@ -798,7 +776,8 @@
             :if ($provider = "cloudflare") do={
                 # Look the A record up by name so its ID does not need to be configured.
                 :local response [/tool fetch \
-                    url=($cloudflareApiUrl . ($record->"zoneid") . "/dns_records?type=A&name=" . $hostname) \
+                    url=((($providers->"cloudflare")->"url") . ($record->"zoneid") . \
+                        "/dns_records?type=A&name=" . $hostname) \
                     http-method=get http-header-field=$cloudflareHeaders \
                     check-certificate=$checkCertificate output=user as-value]
                 # Keep JSON strings as strings; record IDs must not be turned into numbers.
@@ -818,16 +797,7 @@
                 :set ($dnsIps->$index) [:toip (($matches->0)->"content")]
             }
             :if ($provider != "cloudflare") do={
-                :local nameServerIp $noipNameServerIp
-                :if ($provider = "duckdns") do={
-                    :set nameServerIp $duckdnsNameServerIp
-                }
-                :if ($provider = "dynu") do={
-                    :set nameServerIp $dynuNameServerIp
-                }
-                :if ($provider = "freedns") do={
-                    :set nameServerIp $freednsNameServerIp
-                }
+                :local nameServerIp ($nameServerIps->$provider)
                 :if ([:typeof $nameServerIp] = "ip") do={
                     # If the provider's server does not answer, the API may still work: read the
                     # record through the router's DNS so that the update is not blocked.
@@ -905,22 +875,15 @@
             :local freednsRejected false
             # Cleared when the provider answers that the record already had this IP.
             :local recordChanged true
-            # No-IP and Dynu share the dyndns2 protocol; only the URL, account and codes differ.
-            :local dyndnsName "No-IP"
-            :local dyndnsUrl $noipUpdateUrl
-            :local dyndnsAuthHeader $noipAuthHeader
-            :local dyndnsFatalCodes $noipFatalCodes
-            :if ($provider = "dynu") do={
-                :set dyndnsName "Dynu"
-                :set dyndnsUrl $dynuUpdateUrl
-                :set dyndnsAuthHeader $dynuAuthHeader
-                :set dyndnsFatalCodes $dynuFatalCodes
-            }
+            :local providerInfo ($providers->$provider)
+            :local providerName ($providerInfo->"name")
+            :local protocol ($providerInfo->"protocol")
+            :local updateUrl ($providerInfo->"url")
             :onerror updateError,updateErrorInfo in={
-                :if ($provider = "cloudflare") do={
+                :if ($protocol = "cloudflare") do={
                     # Only the content is sent, so proxy status and TTL are kept.
                     :local response [/tool fetch \
-                        url=($cloudflareApiUrl . ($record->"zoneid") . "/dns_records/" . ($recordIds->$index)) \
+                        url=($updateUrl . ($record->"zoneid") . "/dns_records/" . ($recordIds->$index)) \
                         http-method=patch http-header-field=$cloudflareHeaders \
                         http-data=("{\"content\":\"" . $recordIp . "\"}") \
                         check-certificate=$checkCertificate output=user as-value]
@@ -931,10 +894,11 @@
                     }
                     :log info ($logPrefix . "INFO - " . $hostname . " updated to " . $recordIp)
                 }
-                :if (($provider = "noip") || ($provider = "dynu")) do={
+                # No-IP and Dynu share dyndns2; only the URL, account and codes differ.
+                :if ($protocol = "dyndns2") do={
                     :local response [/tool fetch \
-                        url=($dyndnsUrl . "?hostname=" . $hostname . "&myip=" . $recordIp) \
-                        http-header-field=("Authorization:" . $dyndnsAuthHeader . ",User-Agent:" . \
+                        url=($updateUrl . "?hostname=" . $hostname . "&myip=" . $recordIp) \
+                        http-header-field=("Authorization:" . ($authHeaders->$provider) . ",User-Agent:" . \
                             $userAgent) \
                         check-certificate=$checkCertificate output=user as-value]
 
@@ -950,32 +914,32 @@
 
                     # "good" = updated, "nochg" = already had this IP. Anything else is an error.
                     :if (($answerCode != "good") && ($answerCode != "nochg")) do={
-                        :if ([:typeof [:find $dyndnsFatalCodes $answerCode]] = "num") do={
+                        :if ([:typeof [:find ($providerInfo->"fatalcodes") $answerCode]] = "num") do={
                             :set dyndnsFatal true
                         }
                         :if ($answerCode = "badauth") do={
                             :set dyndnsBadauth true
                         }
-                        :error ($dyndnsName . " answered " . $answerLine)
+                        :error ($providerName . " answered " . $answerLine)
                     }
                     :if ($answerCode = "good") do={
                         :log info ($logPrefix . "INFO - " . $hostname . " updated to " . $recordIp . \
-                            " (" . $dyndnsName . ": " . $answerLine . ")")
+                            " (" . $providerName . ": " . $answerLine . ")")
                     } else={
                         :set recordChanged false
                         :log info ($logPrefix . "INFO - " . $hostname . " already had " . $recordIp . \
-                            " (" . $dyndnsName . ": " . $answerLine . ")")
+                            " (" . $providerName . ": " . $answerLine . ")")
                     }
                     # Dynu may answer the code alone; No-IP always adds the IP.
                     :if (($answerIp != [:tostr $recordIp]) && \
                         (($provider = "noip") || ([:len $answerIp] > 0))) do={
-                        :log warning ($logPrefix . "WARNING - " . $dyndnsName . " did not keep " . \
+                        :log warning ($logPrefix . "WARNING - " . $providerName . " did not keep " . \
                             $recordIp . " for " . $hostname)
                     }
                 }
-                :if ($provider = "freedns") do={
+                :if ($protocol = "freedns") do={
                     :local response [/tool fetch \
-                        url=($freednsUpdateUrl . ($record->"token") . "/?hostname=" . $hostname . \
+                        url=($updateUrl . ($record->"token") . "/?hostname=" . $hostname . \
                             "&myip=" . $recordIp) \
                         check-certificate=$checkCertificate output=user as-value]
 
@@ -997,12 +961,12 @@
                         }
                     }
                 }
-                :if ($provider = "duckdns") do={
+                :if ($protocol = "duckdns") do={
                     # DuckDNS wants the name without .duckdns.org. One request per record keeps
                     # each failure tied to its own hostname.
                     :local subdomain [:pick $hostname 0 ([:len $hostname] - [:len $duckdnsSuffix])]
                     :local response [/tool fetch \
-                        url=($duckdnsUpdateUrl . "?domains=" . $subdomain . "&token=" . $duckdnsToken . \
+                        url=($updateUrl . "?domains=" . $subdomain . "&token=" . $duckdnsToken . \
                             "&ip=" . $recordIp . "&verbose=true") \
                         check-certificate=$checkCertificate output=user as-value]
 
@@ -1063,7 +1027,7 @@
                 # fetch or the answer quotes them.
                 :local errorText [:tostr $updateError]
                 :local secrets [:toarray ""]
-                :if ($usesDuckdns) do={
+                :if (($usedProviders->"duckdns") = true) do={
                     :set secrets ($secrets, $duckdnsToken)
                 }
                 :if ($provider = "freedns") do={
@@ -1090,17 +1054,14 @@
                     :log error ($logPrefix . "ERROR - check that the Cloudflare API token can edit" . \
                         " DNS records of the zone of " . $hostname)
                 }
-                :if (($provider = "noip") && ($dyndnsFatal || $authError)) do={
-                    :log error ($logPrefix . "ERROR - fix the No-IP account or hostname now, or disable the scheduler:" . \
-                        " No-IP may block clients that keep sending failing updates")
+                :if (($protocol = "dyndns2") && ($dyndnsFatal || $authError)) do={
+                    :log error ($logPrefix . "ERROR - fix the " . $providerName . " account or hostname now," . \
+                        " or disable the scheduler: " . $providerName . " may block clients that keep" . \
+                        " sending failing updates")
                 }
                 :if (($provider = "duckdns") && ($duckdnsRejected || $authError)) do={
                     :log error ($logPrefix . "ERROR - check the DuckDNS token and that " . $hostname . \
                         " belongs to the account")
-                }
-                :if (($provider = "dynu") && ($dyndnsFatal || $authError)) do={
-                    :log error ($logPrefix . "ERROR - fix the Dynu account or hostname now, or disable the scheduler:" . \
-                        " Dynu may block clients that keep sending failing updates")
                 }
                 :if ($dyndnsBadauth) do={
                     :log error ($logPrefix . "ERROR - if the password has \$, \" or \\, write them" . \
