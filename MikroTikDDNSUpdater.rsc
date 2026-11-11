@@ -110,7 +110,9 @@
 # http-header-field uses them to separate headers.
 :local userAgent ("MikroTikDDNSUpdater/" . $buildNumber . " github.com/lolostt/MikroTikDDNSUpdater")
 
-# Public IP services, in the order used by "auto". All of them return IPv4 only.
+# Public IP services, in the order used by "auto". None of these names has an IPv6 address, so
+# they answer with the IPv4 one (fetch in 7.23.4 has no ip-type option to force it). An IPv6
+# answer would be rejected below and the next service tried.
 :local publicIpServiceOrder {"icanhazip"; "ipify"; "amazon"; "ipinfo"; "mikrotik"}
 :local publicIpServiceUrls {
     icanhazip="https://ipv4.icanhazip.com";
