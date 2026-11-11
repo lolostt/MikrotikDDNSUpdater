@@ -82,12 +82,17 @@
 # and FreeDNS credentials are first sent when a record needs an update.
 :local dryRun true
 
-# "auto" tries every public IP service in order until one answers.
+# "auto" asks the public IP services in order until publicIpQuorum of them agree (see below).
 # Set "icanhazip", "ipify", "amazon", "ipinfo" or "mikrotik" to use only that service.
 # "mikrotik" reads /ip cloud and only works if IP Cloud DDNS is already enabled.
 # "interface" reads the IPv4 address of router interfaces instead: wanInterface for every
 # record, or the interface field of a record that has one (see records above).
 :local publicIpService "auto"
+
+# Only for publicIpService "auto": how many services must return the same address before it is
+# used. 2 (default) protects the records from one service that answers a wrong address; 1 takes
+# the first answer and saves one request per run.
+:local publicIpQuorum 2
 
 # Only for publicIpService "interface": the interface that holds the public IPv4 address,
 # e.g. "pppoe-out1". Every record without its own interface field uses it; if all records
@@ -281,6 +286,11 @@
 :local authHeaders [:toarray ""]
 :local cloudflareHeaders ""
 :local publicIp ""
+# Public IP quorum: each different address returned, how many services returned it and which.
+:local quorum 1
+:local seenIps [:toarray ""]
+:local seenCounts [:toarray ""]
+:local seenServices [:toarray ""]
 # Per-record state, indexed like $records.
 :local recordIds [:toarray ""]
 :local recordInterfaces [:toarray ""]
@@ -306,6 +316,16 @@
     ([:typeof [:find $publicIpServiceOrder $publicIpService]] != "num")) do={
     :log error ($logPrefix . "ERROR - unknown publicIpService: " . $publicIpService)
     :error ($logPrefix . "invalid publicIpService")
+}
+
+:if (([:typeof $publicIpQuorum] != "num") || ($publicIpQuorum < 1) || \
+    ($publicIpQuorum > [:len $publicIpServiceOrder])) do={
+    :log error ($logPrefix . "ERROR - publicIpQuorum must be a number from 1 to " . \
+        [:len $publicIpServiceOrder])
+    :error ($logPrefix . "invalid publicIpQuorum")
+}
+:if ($publicIpService = "auto") do={
+    :set quorum $publicIpQuorum
 }
 
 :if (($checkCertificate != "yes") && ($checkCertificate != "yes-without-crl") && \
@@ -583,7 +603,7 @@
 # ============================================================================
 
 :foreach serviceName in=$publicIpServiceOrder do={
-    # Use only the selected service, and skip the rest once one has answered.
+    # Use only the selected service, and skip the rest once the quorum is reached.
     :if ((($publicIpService = "auto") || ($publicIpService = $serviceName)) && \
         ([:typeof $publicIp] != "ip")) do={
         :local answer ""
@@ -612,9 +632,34 @@
             :local candidateIp [$parseIpv4 text=$answer]
             :if ([:typeof $candidateIp] = "ip") do={
                 :if ([$isPublicIp address=$candidateIp ranges=$nonPublicRanges]) do={
-                    :set publicIp $candidateIp
-                    :log info ($logPrefix . "INFO - public IP is " . $publicIp . \
-                        " (" . $serviceName . ")")
+                    # Count this answer for its address.
+                    :local votes 0
+                    :local voters ""
+                    :foreach seenIndex,seenIp in=$seenIps do={
+                        :if ($seenIp = $candidateIp) do={
+                            :set ($seenCounts->$seenIndex) (($seenCounts->$seenIndex) + 1)
+                            :set ($seenServices->$seenIndex) (($seenServices->$seenIndex) . ", " . \
+                                $serviceName)
+                            :set votes ($seenCounts->$seenIndex)
+                            :set voters ($seenServices->$seenIndex)
+                        }
+                    }
+                    :if ($votes = 0) do={
+                        :if ([:len $seenIps] > 0) do={
+                            :log warning ($logPrefix . "WARNING - " . $serviceName . " returned " . \
+                                $candidateIp . ", " . ($seenServices->0) . " returned " . ($seenIps->0))
+                        }
+                        :set seenIps ($seenIps, $candidateIp)
+                        :set seenCounts ($seenCounts, 1)
+                        :set seenServices ($seenServices, $serviceName)
+                        :set votes 1
+                        :set voters $serviceName
+                    }
+                    :if ($votes >= $quorum) do={
+                        :set publicIp $candidateIp
+                        :log info ($logPrefix . "INFO - public IP is " . $publicIp . \
+                            " (" . $voters . ")")
+                    }
                 } else={
                     :log warning ($logPrefix . "WARNING - " . $serviceName . \
                         " returned a non-public address: " . $candidateIp)
@@ -628,7 +673,12 @@
 }
 
 :if (($publicIpService != "interface") && ([:typeof $publicIp] != "ip")) do={
-    :log error ($logPrefix . "ERROR - unable to get the public IP from any service")
+    :if ([:len $seenIps] > 0) do={
+        :log error ($logPrefix . "ERROR - fewer than " . $quorum . " public IP services returned" . \
+            " the same address (publicIpQuorum)")
+    } else={
+        :log error ($logPrefix . "ERROR - unable to get the public IP from any service")
+    }
     :error ($logPrefix . "unable to get the public IP")
 }
 
