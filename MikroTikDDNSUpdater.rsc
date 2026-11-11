@@ -305,7 +305,7 @@
 # Validate user configuration
 # ============================================================================
 
-:log info ($logPrefix . "INFO - starting")
+:log info ($logPrefix . "INFO - starting (build " . $buildNumber . ")")
 
 :if ([:typeof $dryRun] != "bool") do={
     :log error ($logPrefix . "ERROR - dryRun must be true or false")
@@ -512,7 +512,8 @@
     }
 }
 
-# Credentials are only required for the providers in use.
+# Credentials are only required for the providers in use. ($usedProviders->"x") is nothing for
+# a provider that is not in records, hence "= true" instead of the bare value.
 :if (($usedProviders->"cloudflare") = true) do={
     :if (([:len $cloudflareApiToken] = 0) || \
         ($cloudflareApiToken = $placeholderCloudflareApiToken)) do={
@@ -586,7 +587,7 @@
             }
         }
     }
-    :if ($tokenOk = false) do={
+    :if (!$tokenOk) do={
         :log error ($logPrefix . "ERROR - DuckDNS token must look like" . \
             " xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (lowercase hex)")
         :error ($logPrefix . "invalid DuckDNS token")
@@ -702,13 +703,13 @@
         # Reuse the result of an earlier record on the same interface.
         :foreach otherIndex,otherInterface in=$recordInterfaces do={
             :if (($otherIndex < $index) && ($otherInterface = $interfaceName) && \
-                ($alreadyRead = false)) do={
+                !$alreadyRead) do={
                 :set alreadyRead true
                 :set interfaceIp ($recordIps->$otherIndex)
             }
         }
 
-        :if ($alreadyRead = false) do={
+        :if (!$alreadyRead) do={
             :onerror interfaceError in={
                 :local addressIds [/ip address find where interface=$interfaceName \
                     disabled=no invalid=no]
@@ -821,7 +822,7 @@
     :local hostname ($record->"hostname")
 
     # Records already skipped for lack of a public IP are not looked up.
-    :if (($recordFailed->$index) = false) do={
+    :if (!($recordFailed->$index)) do={
         :onerror readError,readErrorInfo in={
             :if ($provider = "cloudflare") do={
                 # Look the A record up by name so its ID does not need to be configured.
@@ -895,7 +896,7 @@
     :local hostname ($record->"hostname")
     :local recordIp ($recordIps->$index)
 
-    :if (($recordFailed->$index) = false) do={
+    :if (!($recordFailed->$index)) do={
         :if ([:tostr ($dnsIps->$index)] = [:tostr $recordIp]) do={
             :log info ($logPrefix . "INFO - " . $hostname . " is up to date")
         } else={
@@ -915,7 +916,7 @@
     :local hostname ($record->"hostname")
     :local recordIp ($recordIps->$index)
 
-    :if (($needsUpdate->$index) = true) do={
+    :if ($needsUpdate->$index) do={
         :if ($dryRun) do={
             :log warning ($logPrefix . "WARNING - dry-run, " . $hostname . " not updated to " . $recordIp)
         } else={
@@ -995,11 +996,11 @@
 
                     # One line of text, e.g. "Updated 1 host(s) ..." or "No IP change detected ...".
                     :local answerLine [:pick [$firstLine text=($response->"data")] 0 $maxAnswerLength]
-                    :if ([:find $answerLine "Updated"] = 0) do={
+                    :if ([:pick $answerLine 0 7] = "Updated") do={
                         :log info ($logPrefix . "INFO - " . $hostname . " updated to " . $recordIp . \
                             " (FreeDNS: " . $answerLine . ")")
                     } else={
-                        :if ([:find $answerLine "No IP change detected"] = 0) do={
+                        :if ([:pick $answerLine 0 21] = "No IP change detected") do={
                             :set recordChanged false
                             :log info ($logPrefix . "INFO - " . $hostname . " already had " . $recordIp . \
                                 " (FreeDNS: " . $answerLine . ")")
