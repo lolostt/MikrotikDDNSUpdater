@@ -122,7 +122,8 @@
 }
 
 # Addresses that can never be the public IP (private, CGNAT, loopback, link-local,
-# multicast, reserved and broadcast), as {network; netmask} pairs.
+# documentation, multicast, reserved and broadcast), as {network; netmask} pairs.
+# 198.18.0.0/15 (network benchmarking) is accepted on purpose: test setups use it.
 :local nonPublicRanges {
     {0.0.0.0; 255.0.0.0};
     {10.0.0.0; 255.0.0.0};
@@ -130,7 +131,10 @@
     {127.0.0.0; 255.0.0.0};
     {169.254.0.0; 255.255.0.0};
     {172.16.0.0; 255.240.0.0};
+    {192.0.2.0; 255.255.255.0};
     {192.168.0.0; 255.255.0.0};
+    {198.51.100.0; 255.255.255.0};
+    {203.0.113.0; 255.255.255.0};
     {224.0.0.0; 240.0.0.0};
     {240.0.0.0; 240.0.0.0}
 }
@@ -652,7 +656,7 @@
                 # to reach the modem. Without any, keep the first one for the checks below.
                 :local publicCount 0
                 :foreach addressId in=$addressIds do={
-                    # The address comes with its prefix length ("198.51.100.5/32").
+                    # The address comes with its prefix length ("198.18.0.5/32").
                     :local address [:tostr [/ip address get $addressId address]]
                     :local candidateIp [:toip [:pick $address 0 [:find $address "/"]]]
                     :local isPublic true

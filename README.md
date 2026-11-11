@@ -111,7 +111,7 @@ Script uses system log to show execution results and errors. Every message start
 
 Script has 5 stages:
 1. Configuration validation. Credentials are only required for the providers in use.
-2. Get public IP address, from the external services or, in interface mode, from each record's interface. Only valid public IPv4 addresses are accepted (private, CGNAT, loopback, link-local, multicast and reserved ranges are rejected).
+2. Get public IP address, from the external services or, in interface mode, from each record's interface. Only valid public IPv4 addresses are accepted (private, CGNAT, loopback, link-local, documentation, multicast and reserved ranges are rejected).
 3. Get the current IP address of each record: through Cloudflare API for Cloudflare, and by asking each provider's own name server for DuckDNS, No-IP, Dynu and FreeDNS. If that server cannot be reached, the router's DNS is asked instead, with a warning: it may still hold the old IP for a while, which at worst sends one unneeded update.
 4. IP addresses comparison.
 5. Update of the records that need it. Cloudflare keeps proxy status and TTL. DuckDNS, No-IP, Dynu and FreeDNS are only contacted when the IP has changed. While the script runs, DuckDNS and FreeDNS tokens never appear in the log (see the security note in [First run and scheduling](#first-run-and-scheduling) for what happens when the script is edited).
