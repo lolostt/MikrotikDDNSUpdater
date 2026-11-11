@@ -46,7 +46,7 @@ Whatever the method, the "User configuration" block at the top of the script has
 
 To update to a newer build, keep a copy of your "User configuration" block, replace the source of the existing script with the new file and paste your block back. The script name and the scheduler entry stay the same.
 
-> **Security note:** credentials are stored in plain text in the script source. Whenever the script is added or edited, from the terminal, Winbox or WebFig, RouterOS writes its whole source, credentials included, to the system log. Take extra care if the log is sent to a remote syslog server. `/export` and backups of the configuration also carry the credentials, so keep them private.
+> **Security note:** credentials are stored in plain text in the script source, which any router user can read, even one with only the `read` policy. Whenever the script is added or edited, from the terminal, Winbox or WebFig, RouterOS writes its whole source, credentials included, to the system log. Take extra care if the log is sent to a remote syslog server. `/export` and backups of the configuration also carry the credentials, so keep them private.
 
 ## Usage
 You can run the script manually using Winbox or WebFig under System > Scripts section.
