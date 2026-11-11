@@ -20,6 +20,10 @@
 # User configuration
 # ============================================================================
 
+# Write every value between double quotes. Inside them, RouterOS reads $ as the start of a
+# variable, " as the end of the value and \ as an escape, and changes the value without any
+# error: write \$, \" and \\ instead (the password Pa$s"w\d goes as "Pa\$s\"w\\d").
+
 # DNS records to keep updated. Field names and hostnames must be lowercase.
 #   DuckDNS:    {provider="duckdns"; hostname="home.duckdns.org"}
 #   No-IP:      {provider="noip"; hostname="home.ddns.net"}
@@ -814,6 +818,7 @@
             :log warning ($logPrefix . "WARNING - dry-run, " . $hostname . " not updated to " . $recordIp)
         } else={
             :local dyndnsFatal false
+            :local dyndnsBadauth false
             :local duckdnsRejected false
             :local freednsRejected false
             # No-IP and Dynu share the dyndns2 protocol; only the URL, account and codes differ.
@@ -870,6 +875,9 @@
                     :if (($answerCode != "good") && ($answerCode != "nochg")) do={
                         :if ([:typeof [:find $dyndnsFatalCodes $answerCode]] = "num") do={
                             :set dyndnsFatal true
+                        }
+                        :if ($answerCode = "badauth") do={
+                            :set dyndnsBadauth true
                         }
                         :error ($dyndnsName . " answered " . $answerLine)
                     }
@@ -1009,6 +1017,10 @@
                 :if (($provider = "dynu") && ($dyndnsFatal || $authError)) do={
                     :log error ($logPrefix . "ERROR - fix the Dynu account or hostname now:" . \
                         " Dynu may block clients that keep sending failing updates")
+                }
+                :if ($dyndnsBadauth) do={
+                    :log error ($logPrefix . "ERROR - if the password has \$, \" or \\, write them" . \
+                        " as \\\$, \\\" and \\\\ in the script")
                 }
                 # FreeDNS answers 404 to tokens that are not v2 ones (such as the longer v1 token).
                 :if (($provider = "freedns") && ($freednsRejected || $authError || \

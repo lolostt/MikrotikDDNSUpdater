@@ -59,6 +59,8 @@ You can also run it from terminal:
 ```
 
 ### Configuration
+Write every text value between double quotes. Inside them, RouterOS reads `$` as the start of a variable, `"` as the end of the value and `\` as an escape character, and changes the value without any error: a password with any of these characters would be sent wrong and rejected with `badauth`. Write them as `\$`, `\"` and `\\`. For example, the password `Pa$s"w\d` goes as `"Pa\$s\"w\\d"`.
+
 - **records** (array): DNS records to keep updated, one entry per hostname. In interface mode, an entry can also carry an `interface` field. There can be one or several records per provider, and providers can be mixed. The hostname is always the full name, also for DuckDNS (`home.duckdns.org`, not `home`). Field names and hostnames must be lowercase (RouterOS reads an unquoted key with capitals, such as `zoneId=`, as a comparison).
     ```
     :local records {
